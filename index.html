@@ -1,43 +1,327 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Simple Notes</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Entries</title>
+
 <style>
-    body {
-        font-family: sans-serif;
-        margin: 20px;
-        background: #f7f7f7;
-    }
-    textarea {
-        width: 100%;
-        height: 80vh;
-        padding: 10px;
-        font-size: 17px;
-        border-radius: 8px;
-        border: 1px solid #ccc;
-    }
-    h2 {
-        text-align: center;
-        font-weight: 600;
-    }
+:root {
+  --bg: #f5f5f7;
+  --fg: #111;
+  --card: #fff;
+  --border: #ddd;
+}
+
+body.dark {
+  --bg: #000;
+  --fg: #eee;
+  --card: #1c1c1e;
+  --border: #333;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+header {
+  padding: 14px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+}
+
+main {
+  padding: 12px;
+  max-width: 700px;
+  margin: auto;
+}
+
+textarea {
+  width: 100%;
+  min-height: 100px;
+  font-size: 16px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--fg);
+}
+
+.buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+button {
+  flex: 1;
+  padding: 10px;
+  font-size: 15px;
+  border-radius: 8px;
+  border: none;
+  background: #007aff;
+  color: white;
+}
+
+button.secondary { background: #8e8e93; }
+button.danger { background: #ff3b30; }
+
+.entry, .separator {
+  background: var(--card);
+  padding: 10px;
+  margin-top: 10px;
+  border-radius: 8px;
+  position: relative;
+  white-space: pre-wrap;
+}
+
+.separator {
+  text-align: center;
+  color: #888;
+}
+
+.day-separator {
+  font-weight: 600;
+}
+
+.timestamp {
+  font-size: 12px;
+  opacity: 0.6;
+  margin-top: 6px;
+}
+
+.controls {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+}
+
+.controls button {
+  background: none;
+  color: #ff3b30;
+  padding: 2px 6px;
+  font-size: 14px;
+}
 </style>
 </head>
+
 <body>
-<h2>My Notes</h2>
-<textarea id="notes" placeholder="Type your notes here..."></textarea>
+<header>
+  <button onclick="toggleDark()">🌓</button>
+</header>
+
+<main id="app" hidden>
+  <textarea id="input" placeholder="text input..."></textarea>
+
+  <div class="buttons">
+    <button onclick="addEntry()">Add Entry</button>
+    <button class="secondary" onclick="addSection()">Add Section</button>
+  </div>
+
+  <div class="buttons">
+    <button class="secondary" onclick="exportDiary()">Export</button>
+    <button class="danger" onclick="deleteAll()">Delete All</button>
+  </div>
+
+  <div id="entries"></div>
+</main>
 
 <script>
-    const textarea = document.getElementById("notes");
+/* ---------- CONSTANTS ---------- */
+const KEY = "diaryEntries";
+const DRAFT_KEY = "diaryDraft";
+const DAY_START = 4;
 
-    // Load saved notes on startup
-    textarea.value = localStorage.getItem("myNotes") || "";
+/* ---------- HELPERS ---------- */
+const load = () => JSON.parse(localStorage.getItem(KEY) || "[]");
+const save = d => localStorage.setItem(KEY, JSON.stringify(d));
 
-    // Save automatically when typing
-    textarea.addEventListener("input", () => {
-        localStorage.setItem("myNotes", textarea.value);
+function diaryDay(date) {
+  const d = new Date(date);
+  if (d.getHours() < DAY_START) d.setDate(d.getDate() - 1);
+  return d.toISOString().split("T")[0];
+}
+
+function isIOS() {
+  return /iPhone|iPad|iPod/.test(navigator.userAgent);
+}
+
+/* ---------- THEME ---------- */
+const prefersDark = matchMedia("(prefers-color-scheme: dark)").matches;
+document.body.classList.toggle(
+  "dark",
+  localStorage.theme === "dark" || (!localStorage.theme && prefersDark)
+);
+
+function toggleDark() {
+  document.body.classList.toggle("dark");
+  localStorage.theme = document.body.classList.contains("dark") ? "dark" : "light";
+}
+
+/* ---------- FACE ID (iOS ONLY) ---------- */
+async function authenticate() {
+  if (!isIOS() || !window.PublicKeyCredential) {
+    app.hidden = false;
+    return;
+  }
+
+  if (!localStorage.credId) {
+    const cred = await navigator.credentials.create({
+      publicKey: {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        rp: { name: "Local Entries" },
+        user: {
+          id: crypto.getRandomValues(new Uint8Array(16)),
+          name: "user",
+          displayName: "Entry User"
+        },
+        pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+        authenticatorSelection: {
+          authenticatorAttachment: "platform",
+          userVerification: "required"
+        }
+      }
     });
-</script>
+    localStorage.credId = btoa(String.fromCharCode(...new Uint8Array(cred.rawId)));
+  } else {
+    await navigator.credentials.get({
+      publicKey: {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        allowCredentials: [{
+          id: Uint8Array.from(atob(localStorage.credId), c => c.charCodeAt(0)),
+          type: "public-key"
+        }],
+        userVerification: "required"
+      }
+    });
+  }
 
+  app.hidden = false;
+}
+
+/* ---------- INPUT DRAFT ---------- */
+const input = document.getElementById("input");
+input.value = localStorage.getItem(DRAFT_KEY) || "";
+
+input.addEventListener("input", () => {
+  localStorage.setItem(DRAFT_KEY, input.value);
+});
+
+/* ---------- ENTRIES ---------- */
+function maybeNewDay(data) {
+  const today = diaryDay(new Date());
+  if (!data.some(e => e.type === "day" && e.day === today)) {
+    data.push({ type: "day", day: today });
+  }
+}
+
+function addEntry() {
+  const text = input.value.trim();
+  if (!text) return;
+
+  const d = load();
+  maybeNewDay(d);
+
+  d.push({
+    type: "text",
+    text,
+    time: new Date().toISOString()
+  });
+
+  save(d);
+  input.value = "";
+  localStorage.removeItem(DRAFT_KEY);
+  render();
+}
+
+function addSection() {
+  if (input.value.trim()) {
+    alert("Add or clear the current text first.");
+    return;
+  }
+
+  const d = load();
+  if (!d.length || d[d.length - 1].type !== "text") return;
+
+  d.push({ type: "section" });
+  save(d);
+  render();
+}
+
+function render() {
+  entries.innerHTML = "";
+  load().forEach((e, i) => {
+    const div = document.createElement("div");
+    div.className = e.type === "text" ? "entry" : "separator";
+    if (e.type === "day") div.classList.add("day-separator");
+
+    if (e.type === "text") {
+      div.textContent = e.text;
+      const ts = document.createElement("div");
+      ts.className = "timestamp";
+      ts.textContent = new Date(e.time).toLocaleString();
+      div.appendChild(ts);
+
+      div.onclick = () => {
+        const t = prompt("Edit entry:", e.text);
+        if (t !== null) {
+          const d = load();
+          d[i].text = t;
+          save(d);
+          render();
+        }
+      };
+    }
+
+    if (e.type === "section") div.textContent = "— — —";
+    if (e.type === "day") div.textContent = "📅 " + e.day;
+
+    const ctrl = document.createElement("div");
+    ctrl.className = "controls";
+    const del = document.createElement("button");
+    del.textContent = "✕";
+    del.onclick = ev => {
+      ev.stopPropagation();
+      const d = load();
+      d.splice(i, 1);
+      save(d);
+      render();
+    };
+    ctrl.appendChild(del);
+    div.appendChild(ctrl);
+    entries.appendChild(div);
+  });
+}
+
+/* ---------- EXPORT & DELETE ---------- */
+function exportDiary() {
+  let out = "";
+  load().forEach(e => {
+    if (e.type === "day") out += `\n=== ${e.day} ===\n`;
+    if (e.type === "text") out += e.text + "\n";
+    if (e.type === "section") out += "\n\n";
+  });
+  navigator.clipboard.writeText(out.trim());
+  alert("Copied to clipboard");
+}
+
+function deleteAll() {
+  if (confirm("Delete all entries?")) {
+    localStorage.removeItem(KEY);
+    render();
+  }
+}
+
+/* ---------- INIT ---------- */
+authenticate().then(render);
+</script>
 </body>
 </html>
