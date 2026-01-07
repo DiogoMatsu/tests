@@ -45,7 +45,10 @@ main {
 
 textarea {
   width: 100%;
+  max-width: 100%;
   min-height: 100px;
+  box-sizing: border-box;
+
   font-size: 16px;
   padding: 10px;
   border-radius: 8px;
@@ -53,6 +56,17 @@ textarea {
   background: var(--card);
   color: var(--fg);
 }
+/*
+textarea {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+  overflow-x: hidden;
+}*/
 
 .buttons {
   display: flex;
