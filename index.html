@@ -110,13 +110,18 @@ button.danger { background: #ff3b30; }
   padding: 2px 6px;
   font-size: 14px;
 }
+
+.day-separator {
+  user-select: none;
+}
+
 </style>
 </head>
 
 <body>
-<header>
-  <button onclick="toggleDark()">🌓</button>
-</header>
+<!--<header>-->
+<!--  <button onclick="toggleDark()">🌓</button>-->
+<!--</header>-->
 
 <main id="app" hidden>
   <textarea id="input" placeholder="text input..."></textarea>
@@ -127,31 +132,46 @@ button.danger { background: #ff3b30; }
   </div>
 
   <div class="buttons">
-    <button class="secondary" onclick="exportDiary()">Export</button>
+    <button class="secondary" onclick="exportDiary()">Export Text</button>
+    <button class="secondary" onclick="exportJSONToClipboard()">Export JSON</button>
+    <button class="secondary" onclick="importFromClipboard()">Import JSON</button>
     <button class="danger" onclick="deleteAll()">Delete All</button>
   </div>
+
 
   <div id="entries"></div>
 </main>
 
 <script>
+
 /* ---------- CONSTANTS ---------- */
 const KEY = "diaryEntries";
 const DRAFT_KEY = "diaryDraft";
 const DAY_START = 4;
+const FOLD_KEY = "diaryDayFoldState";
 
 /* ---------- HELPERS ---------- */
 const load = () => JSON.parse(localStorage.getItem(KEY) || "[]");
 const save = d => localStorage.setItem(KEY, JSON.stringify(d));
 
-function diaryDay(date) {
-  const d = new Date(date);
-  if (d.getHours() < DAY_START) d.setDate(d.getDate() - 1);
-  return d.toISOString().split("T")[0];
+function diaryDay(dateOrMs) {
+  const d = new Date(dateOrMs);
+
+  if (d.getHours() < DAY_START) {
+    d.setDate(d.getDate() - 1);
+  }
+
+  return (
+          d.getFullYear() + "-" +
+          String(d.getMonth() + 1).padStart(2, "0") + "-" +
+          String(d.getDate()).padStart(2, "0")
+  );
 }
 
-function isIOS() {
-  return /iPhone|iPad|iPod/.test(navigator.userAgent);
+
+function hasAuth() {
+  // return /iPhone|iPad|iPod/.test(navigator.userAgent);
+  return false;
 }
 
 /* ---------- THEME ---------- */
@@ -168,7 +188,7 @@ function toggleDark() {
 
 /* ---------- FACE ID (iOS ONLY) ---------- */
 async function authenticate() {
-  if (!isIOS() || !window.PublicKeyCredential) {
+  if (!hasAuth() || !window.PublicKeyCredential) {
     app.hidden = false;
     return;
   }
@@ -233,7 +253,7 @@ function addEntry() {
   d.push({
     type: "text",
     text,
-    time: new Date().toISOString()
+    time: Date.now()
   });
 
   save(d);
@@ -257,67 +277,222 @@ function addSection() {
 }
 
 function render() {
-  entries.innerHTML = "";
-  load().forEach((e, i) => {
-    const div = document.createElement("div");
-    div.className = e.type === "text" ? "entry" : "separator";
-    if (e.type === "day") div.classList.add("day-separator");
+  const data = load();
+  const container = entries;
+  container.innerHTML = "";
 
-    if (e.type === "text") {
-      div.textContent = e.text;
-      const ts = document.createElement("div");
-      ts.className = "timestamp";
-      ts.textContent = new Date(e.time).toLocaleString();
-      div.appendChild(ts);
+  const foldState = loadFoldState();
+  let dayBlock = null;
 
-      div.onclick = () => {
-        const t = prompt("Edit entry:", e.text);
-        if (t !== null) {
-          const d = load();
-          d[i].text = t;
-          save(d);
-          render();
-        }
+  data.forEach((e, i) => {
+    if (e.type === "day") {
+      let currentDay = e.day;
+      const expanded = isDayExpanded(currentDay);
+
+      // Day header
+      const header = document.createElement("div");
+      header.className = "separator day-separator";
+      header.style.cursor = "pointer";
+      header.textContent = `${expanded ? "🔽" : "▶️"} ${currentDay}`;
+
+      header.onclick = () => {
+        foldState[currentDay] = !expanded;
+        saveFoldState(foldState);
+        render();
       };
+
+      container.appendChild(header);
+
+      // Container for day entries
+      dayBlock = document.createElement("div");
+      dayBlock.style.display = expanded ? "block" : "none";
+      container.appendChild(dayBlock);
+      return;
     }
 
-    if (e.type === "section") div.textContent = "— — —";
-    if (e.type === "day") div.textContent = "📅 " + e.day;
+    // Entries inside a day
+    if (dayBlock) {
+      const div = document.createElement("div");
+      div.className = e.type === "text" ? "entry" : "separator";
 
-    const ctrl = document.createElement("div");
-    ctrl.className = "controls";
-    const del = document.createElement("button");
-    del.textContent = "✕";
-    del.onclick = ev => {
-      ev.stopPropagation();
-      const d = load();
-      d.splice(i, 1);
-      save(d);
-      render();
-    };
-    ctrl.appendChild(del);
-    div.appendChild(ctrl);
-    entries.appendChild(div);
+      if (e.type === "text") {
+        div.textContent = e.text;
+
+        const ts = document.createElement("div");
+        ts.className = "timestamp";
+        ts.textContent =
+                diaryDay(e.time) + " " + formatDiaryTime(e.time);
+        div.appendChild(ts);
+
+        div.onclick = () => {
+          const t = prompt("Edit entry:", e.text);
+          if (t !== null) {
+            const d = load();
+            d[i].text = t;
+            save(d);
+            render();
+          }
+        };
+      }
+
+      if (e.type === "section") {
+        div.textContent = "— — —";
+      }
+
+      // Delete button
+      const ctrl = document.createElement("div");
+      ctrl.className = "controls";
+      const del = document.createElement("button");
+      del.textContent = "✕";
+      del.onclick = ev => {
+        ev.stopPropagation();
+        const d = load();
+        d.splice(i, 1);
+        save(d);
+        render();
+      };
+
+      ctrl.appendChild(del);
+      div.appendChild(ctrl);
+      dayBlock.appendChild(div);
+    }
   });
 }
 
 /* ---------- EXPORT & DELETE ---------- */
 function exportDiary() {
   let out = "";
+
   load().forEach(e => {
-    if (e.type === "day") out += `\n=== ${e.day} ===\n`;
-    if (e.type === "text") out += e.text + "\n";
-    if (e.type === "section") out += "\n\n";
+    if (e.type === "day") {
+      out += `\n=== ${e.day} ===\n`;
+    }
+
+    if (e.type === "text") {
+      const time = e.time
+              ? formatDiaryTime(e.time)
+              : "??:??";
+
+      out += `[${time}]\n`;
+      out += e.text + "\n\n";
+    }
   });
+
   navigator.clipboard.writeText(out.trim());
-  alert("Copied to clipboard");
+  alert("Copied to clipboard.");
 }
+
+
+function formatDiaryTime(timeMs) {
+  const d = new Date(timeMs);
+
+  let hours = d.getHours();
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+
+  if (hours < DAY_START) {
+    hours += 24;
+  }
+
+  return String(hours).padStart(2, "0") + ":" + minutes;
+}
+
+
+
 
 function deleteAll() {
   if (confirm("Delete all entries?")) {
     localStorage.removeItem(KEY);
     render();
   }
+}
+
+async function exportJSONToClipboard() {
+  const data = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    dayStartHour: DAY_START,
+    entries: load(),
+    draft: localStorage.getItem(DRAFT_KEY) || "",
+    theme: localStorage.theme || "system"
+  };
+
+  await navigator.clipboard.writeText(
+          JSON.stringify(data, null, 2)
+  );
+
+  alert("JSON copied to clipboard.");
+}
+
+
+async function importFromClipboard() {
+  if (!navigator.clipboard) {
+    alert("Clipboard access not supported.");
+    return;
+  }
+
+  if (!confirm("Importing will overwrite current data. Continue?")) {
+    return;
+  }
+
+  try {
+    const text = await navigator.clipboard.readText();
+    if (!text.trim()) {
+      alert("Clipboard is empty.");
+      return;
+    }
+
+    const data = JSON.parse(text);
+
+    // Basic validation
+    if (!data.entries || !Array.isArray(data.entries)) {
+      alert("Clipboard does not contain valid data.");
+      return;
+    }
+
+    // Restore entries
+    localStorage.setItem(KEY, JSON.stringify(data.entries));
+
+    // Restore draft (optional)
+    if (typeof data.draft === "string") {
+      localStorage.setItem(DRAFT_KEY, data.draft);
+      input.value = data.draft;
+    } else {
+      localStorage.removeItem(DRAFT_KEY);
+      input.value = "";
+    }
+
+    // Restore theme (optional)
+    if (data.theme) {
+      localStorage.theme = data.theme;
+      document.body.classList.toggle("dark", data.theme === "dark");
+    }
+
+    render();
+    alert("Imported from clipboard.");
+  } catch (err) {
+    alert("Failed to import. Clipboard does not contain valid JSON.");
+  }
+}
+
+/* ---------- FOLDOUT ---------- */
+function loadFoldState() {
+  return JSON.parse(localStorage.getItem(FOLD_KEY) || "{}");
+}
+
+function saveFoldState(state) {
+  localStorage.setItem(FOLD_KEY, JSON.stringify(state));
+}
+
+function isDayExpanded(day) {
+  const state = loadFoldState();
+  const today = diaryDay(Date.now());
+
+  if (state[day] === undefined) {
+    // Default: today open, past days closed
+    return day === today;
+  }
+
+  return state[day];
 }
 
 /* ---------- INIT ---------- */
