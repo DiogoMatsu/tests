@@ -330,14 +330,36 @@ function render() {
       div.className = e.type === "text" ? "entry" : "separator";
 
       if (e.type === "text") {
-        div.textContent = e.text;
-
+        // Timestamp DIV
         const ts = document.createElement("div");
         ts.className = "timestamp";
-        ts.textContent =
-                diaryDay(e.time) + " " + formatDiaryTime(e.time);
-        div.appendChild(ts);
+        ts.textContent = formatDiaryTime(e.time);
 
+        // Text node (NOT a div)
+        const textNode = document.createTextNode(e.text);
+
+        // Append in correct order
+        div.appendChild(ts);
+        div.appendChild(textNode);
+
+        // Controls
+        const ctrl = document.createElement("div");
+        ctrl.className = "controls";
+
+        const del = document.createElement("button");
+        del.textContent = "✕";
+        del.onclick = ev => {
+          ev.stopPropagation();
+          const d = load();
+          d.splice(i, 1);
+          save(d);
+          render();
+        };
+
+        ctrl.appendChild(del);
+        div.appendChild(ctrl);
+
+        // Edit on tap
         div.onclick = () => {
           const t = prompt("Edit entry:", e.text);
           if (t !== null) {
@@ -360,6 +382,9 @@ function render() {
       del.textContent = "✕";
       del.onclick = ev => {
         ev.stopPropagation();
+        if (!confirm("Delete entry?")) {
+          return;
+        }
         const d = load();
         d.splice(i, 1);
         save(d);
@@ -374,21 +399,25 @@ function render() {
 }
 
 /* ---------- EXPORT & DELETE ---------- */
+const separatorLength = 116;
 function exportDiary() {
   let out = "";
 
   load().forEach(e => {
     if (e.type === "day") {
-      out += `\n=== ${e.day} ===\n`;
+      out += "-".repeat(separatorLength) + '\n';
+      out += `${formatDayLabel(e.day)}\n`;
     }
-
+    if (e.type === "section") {
+      out += `--\n`;
+    }
     if (e.type === "text") {
       const time = e.time
               ? formatDiaryTime(e.time)
               : "??:??";
 
-      out += `[${time}]\n`;
-      out += e.text + "\n\n";
+      out += `${time}\n`;
+      out += wrapExportText(e.text) + "\n\n";
     }
   });
 
@@ -396,7 +425,31 @@ function exportDiary() {
   alert("Copied to clipboard.");
 }
 
+/**
+ * Format day label: "YYYY-MM-DD" -> "Wed, Mar 03"
+ * @param dayStr
+ * @returns {string}
+ */
+function formatDayLabel(dayStr) {
+  // dayStr = "YYYY-MM-DD"
+  const [y, m, d] = dayStr.split("-").map(Number);
 
+  // Create LOCAL date (no timezone conversion)
+  const date = new Date(y, m - 1, d);
+
+  return date.toLocaleDateString("en-US", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short"
+  });
+}
+
+/**
+ * Format time for diary entry, adjusting for DAY_START.
+ * eg: 02:30 -> 26:30 if DAY_START is 4
+ * @param timeMs
+ * @returns {string}
+ */
 function formatDiaryTime(timeMs) {
   const d = new Date(timeMs);
 
@@ -409,6 +462,50 @@ function formatDiaryTime(timeMs) {
 
   return String(hours).padStart(2, "0") + ":" + minutes;
 }
+
+function wrapExportText(text, target = separatorLength, grace = 20) {
+  const breakers = [".", "?", "!", ",", ";", ":"];
+  const lines = [];
+  let i = 0;
+
+  while (i < text.length) {
+    let bestBreak = -1;
+    let end = Math.min(i + target, text.length);
+    let slice = text.slice(i, end);
+
+    // 1️⃣ Look BEFORE target, priority order
+    for (const b of breakers) {
+      const idx = slice.lastIndexOf(b);
+      if (idx !== -1) {
+        bestBreak = i + idx + 1;
+        break;
+      }
+    }
+
+    // 2️⃣ Look AFTER target (grace window), same priority
+    if (bestBreak === -1 && end < text.length) {
+      const after = text.slice(end, end + grace);
+      for (const b of breakers) {
+        const idx = after.indexOf(b);
+        if (idx !== -1) {
+          bestBreak = end + idx + 1;
+          break;
+        }
+      }
+    }
+
+    // 3️⃣ Hard break
+    if (bestBreak === -1) {
+      bestBreak = end;
+    }
+
+    lines.push(text.slice(i, bestBreak).trim());
+    i = bestBreak;
+  }
+
+  return lines.join("\n");
+}
+
 
 
 
