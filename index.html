@@ -56,17 +56,6 @@ textarea {
   background: var(--card);
   color: var(--fg);
 }
-/*
-textarea {
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  overflow-wrap: anywhere;
-  overflow-x: hidden;
-}*/
 
 .buttons {
   display: flex;
@@ -129,6 +118,47 @@ button.danger { background: #ff3b30; }
   user-select: none;
 }
 
+.menu {
+  position: relative;
+  display: inline-block;
+}
+
+.menu-btn {
+  font-size: 20px;
+  padding: 8px 12px;
+}
+
+.menu-content {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-width: 160px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.15);
+  display: none;
+  z-index: 100;
+}
+
+.menu-content button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  background: none;
+  border: none;
+}
+
+.menu-content button:hover {
+  background: var(--hover);
+}
+
+
+.add-entry {
+  flex: 0 0 70%;
+}
+
 </style>
 </head>
 
@@ -140,19 +170,19 @@ button.danger { background: #ff3b30; }
 <main id="app" hidden>
   <textarea id="input" placeholder="text input..."></textarea>
 
-  <div class="buttons">
-    <button onclick="addEntry()">Add Entry</button>
+  <div class="buttons" class="actions">
+    <button class="primary add-entry" onclick="addEntry()">Add Entry</button>
     <button class="secondary" onclick="addSection()">Add Section</button>
+    <div class="menu">
+      <button class="secondary menu-btn">⋯</button>
+      <div class="menu-content">
+        <button class="secondary" onclick="exportDiary()">Export Text</button>
+        <button class="secondary" onclick="exportJSONToClipboard()">Export JSON</button>
+        <button class="secondary" onclick="importFromClipboard()">Import JSON</button>
+        <button class="danger" onclick="deleteAll()">Delete All</button>
+      </div>
+    </div>
   </div>
-
-  <div class="buttons">
-    <button class="secondary" onclick="exportDiary()">Export Text</button>
-    <button class="secondary" onclick="exportJSONToClipboard()">Export JSON</button>
-    <button class="secondary" onclick="importFromClipboard()">Import JSON</button>
-    <button class="danger" onclick="deleteAll()">Delete All</button>
-  </div>
-
-
   <div id="entries"></div>
 </main>
 
@@ -585,6 +615,25 @@ async function importFromClipboard() {
   }
 }
 
+
+function handleDropdownAction(sel) {
+  switch (sel.value) {
+    case "exportText":
+      exportDiary();
+      break;
+    case "exportJSON":
+      exportJSONToClipboard();
+      break;
+    case "importJSON":
+      importFromClipboard();
+      break;
+    case "deleteAll":
+      deleteAll();
+      break;
+  }
+  sel.value = "";
+}
+
 /* ---------- FOLDOUT ---------- */
 function loadFoldState() {
   return JSON.parse(localStorage.getItem(FOLD_KEY) || "{}");
@@ -606,8 +655,26 @@ function isDayExpanded(day) {
   return state[day];
 }
 
+/* ---------- Dropdown ---------- */
+const menuBtn = document.querySelector(".menu-btn");
+const menu = document.querySelector(".menu-content");
+
+menuBtn.onclick = e => {
+  e.stopPropagation();
+  menu.style.display = menu.style.display === "block" ? "none" : "block";
+};
+
+document.addEventListener("click", () => {
+  menu.style.display = "none";
+});
+
 /* ---------- INIT ---------- */
 authenticate().then(render);
+window.addEventListener("load", () => {
+  const input = document.querySelector("textarea");
+  if (input) input.focus();
+});
+
 </script>
 </body>
 </html>
