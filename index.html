@@ -55,6 +55,16 @@ textarea {
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--fg);
+
+
+  /* CRITICAL for iOS caret control */
+  max-height: 50vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+
+  /* Keep wrapping correct */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .buttons {
@@ -287,7 +297,7 @@ function maybeNewDay(data) {
   }
 }
 
-function addEntry() {
+function addEntry(compress) {
   const text = input.value.trim();
   if (!text) return;
 
@@ -667,6 +677,67 @@ menuBtn.onclick = e => {
 document.addEventListener("click", () => {
   menu.style.display = "none";
 });
+
+/* ---------- Compress ---------- */
+async function gzipCompress(str) {
+  const cs = new CompressionStream("gzip");
+  const writer = cs.writable.getWriter();
+  writer.write(new TextEncoder().encode(str));
+  writer.close();
+
+  const compressed = await new Response(cs.readable).arrayBuffer();
+  return compressed;
+}
+async function gzipDecompress(buffer) {
+  const ds = new DecompressionStream("gzip");
+  const writer = ds.writable.getWriter();
+  writer.write(buffer);
+  writer.close();
+
+  const decompressed = await new Response(ds.readable).text();
+  return decompressed;
+}
+
+async function gzipCompressString(str) {
+  const encoder = new TextEncoder();
+  const cs = new CompressionStream("gzip");
+
+  const writer = cs.writable.getWriter();
+  writer.write(encoder.encode(str));
+  writer.close();
+
+  const buffer = await new Response(cs.readable).arrayBuffer();
+
+  // Convert ArrayBuffer → Base64 string
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000; // prevent call stack overflow
+
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(
+            ...bytes.subarray(i, i + chunkSize)
+    );
+  }
+
+  return btoa(binary);
+}
+
+async function gzipDecompressString(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+
+  const ds = new DecompressionStream("gzip");
+  const writer = ds.writable.getWriter();
+  writer.write(bytes);
+  writer.close();
+
+  return await new Response(ds.readable).text();
+}
+
 
 /* ---------- INIT ---------- */
 authenticate().then(render);
