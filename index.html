@@ -186,6 +186,7 @@ button.danger { background: #ff3b30; }
     <div class="menu">
       <button class="secondary menu-btn">⋯</button>
       <div class="menu-content">
+        <button class="secondary" onclick="addEntry(true)">Add Encrypted</button>
         <button class="secondary" onclick="exportDiary()">Export Text</button>
         <button class="secondary" onclick="exportJSONToClipboard()">Export JSON</button>
         <button class="secondary" onclick="importFromClipboard()">Import JSON</button>
@@ -297,17 +298,22 @@ function maybeNewDay(data) {
   }
 }
 
-function addEntry(compress) {
-  const text = input.value.trim();
+async function addEntry(compressed = false) {
+  let text = input.value.trim();
   if (!text) return;
 
   const d = load();
   maybeNewDay(d);
 
+  // Compress and store
+  if (compressed) {
+    text = await gzipCompressString(text);
+  }
   d.push({
     type: "text",
-    text,
-    time: Date.now()
+    text: text,
+    time: Date.now(),
+    compressed: compressed
   });
 
   save(d);
@@ -330,7 +336,7 @@ function addSection() {
   render();
 }
 
-function render() {
+async function render() {
   const data = load();
   const container = entries;
   container.innerHTML = "";
@@ -338,7 +344,8 @@ function render() {
   const foldState = loadFoldState();
   let dayBlock = null;
 
-  data.forEach((e, i) => {
+  for (let i = 0; i < data.length; i++) {
+    const e = data[i];
     if (e.type === "day") {
       let currentDay = e.day;
       const expanded = isDayExpanded(currentDay);
@@ -361,10 +368,9 @@ function render() {
       dayBlock = document.createElement("div");
       dayBlock.style.display = expanded ? "block" : "none";
       container.appendChild(dayBlock);
-      return;
+      continue;
     }
 
-    // Entries inside a day
     if (dayBlock) {
       const div = document.createElement("div");
       div.className = e.type === "text" ? "entry" : "separator";
@@ -375,17 +381,20 @@ function render() {
         ts.className = "timestamp";
         ts.textContent = formatDiaryTime(e.time);
 
-        // Text node (NOT a div)
-        const textNode = document.createTextNode(e.text);
+        // Text node
+        let textNode;
+        if (e.compressed) {
+          textNode = document.createTextNode("Unknown Text");
+        } else {
+          textNode = document.createTextNode(e.text);
+        }
 
-        // Append in correct order
         div.appendChild(ts);
         div.appendChild(textNode);
 
         // Controls
         const ctrl = document.createElement("div");
         ctrl.className = "controls";
-
         const del = document.createElement("button");
         del.textContent = "✕";
         del.onclick = ev => {
@@ -395,20 +404,27 @@ function render() {
           save(d);
           render();
         };
-
         ctrl.appendChild(del);
         div.appendChild(ctrl);
 
         // Edit on tap
-        div.onclick = () => {
-          const t = prompt("Edit entry:", e.text);
-          if (t !== null) {
-            const d = load();
-            d[i].text = t;
-            save(d);
-            render();
-          }
-        };
+        if (!e.compressed)
+        {
+          div.onclick = async () => {
+            let currentText = e.compressed ? await gzipDecompressString(e.text) : e.text;
+            const t = prompt("Edit entry:", currentText);
+            if (t !== null) {
+              const d = load();
+              if (e.compressed) {
+                d[i].text = await gzipCompressString(t);
+              } else {
+                d[i].text = t;
+              }
+              save(d);
+              render();
+            }
+          };
+        }
       }
 
       if (e.type === "section") {
@@ -435,15 +451,15 @@ function render() {
       div.appendChild(ctrl);
       dayBlock.appendChild(div);
     }
-  });
+  }
 }
 
 /* ---------- EXPORT & DELETE ---------- */
 const separatorLength = 116;
-function exportDiary() {
+async function exportDiary() {
   let out = "";
-
-  load().forEach(e => {
+  const data = load();
+  for (const e of data) {
     if (e.type === "day") {
       out += "-".repeat(separatorLength) + '\n';
       out += `${formatDayLabel(e.day)}\n`;
@@ -452,15 +468,12 @@ function exportDiary() {
       out += `--\n`;
     }
     if (e.type === "text") {
-      const time = e.time
-              ? formatDiaryTime(e.time)
-              : "??:??";
-
+      const time = e.time ? formatDiaryTime(e.time) : "??:??";
+      let text = e.compressed ? await gzipDecompressString(e.text) : e.text;
       out += `${time}\n`;
-      out += wrapExportText(e.text) + "\n\n";
+      out += wrapExportText(text) + "\n\n";
     }
-  });
-
+  }
   navigator.clipboard.writeText(out.trim());
   alert("Copied to clipboard.");
 }
@@ -741,10 +754,6 @@ async function gzipDecompressString(base64) {
 
 /* ---------- INIT ---------- */
 authenticate().then(render);
-window.addEventListener("load", () => {
-  const input = document.querySelector("textarea");
-  if (input) input.focus();
-});
 
 </script>
 </body>
