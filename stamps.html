@@ -117,6 +117,22 @@
       display: flex;
       gap: 8px;
     }
+    .progress {
+      width: 100%;
+      height: 8px;
+      background: #000;
+      border-radius: 6px;
+      overflow: hidden;
+      margin: 8px 0 12px;
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: var(--accent);
+      transition: width 0.25s ease;
+    }
+
 
     select {
       width: 100%;
@@ -148,9 +164,9 @@
       <button onclick="addDigit('0')">0</button>
       <button onclick="backspace()">⌫</button>
 
-      <button class="quick" onclick="quickAdd('.99')">+.99</button>
-      <button class="quick" onclick="quickAdd('.49')">+.49</button>
-      <button class="quick" onclick="quickAdd('.00')">+.00</button>
+      <button class="quick" onclick="quickAdd('.99')">.99</button>
+      <button class="quick" onclick="quickAdd('.49')">.49</button>
+      <button class="quick" onclick="quickAdd('.00')">.00</button>
 
       <button class="wide" onclick="clearInput()">Clear</button>
     </div>
@@ -160,8 +176,8 @@
     <div class="menu">
       <select id="menuSelect" onchange="handleMenu(this.value)">
         <option value="">Options</option>
-        <option value="25">$25 per stamp</option>
-        <option value="20">$20 per stamp</option>
+        <option value="25">R$25 per stamp</option>
+        <option value="20">R$20 per stamp</option>
         <option value="custom">Set Custom stamp</option>
         <option value="clear">Clear all items</option>
       </select>
@@ -170,8 +186,12 @@
 
   <div class="card">
     <div class="summary" id="summary"></div>
+    <div class="progress">
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
     <div id="items"></div>
   </div>
+
 
 </div>
 
@@ -195,6 +215,10 @@
 
   function updateDisplay() {
     display.textContent = input || "0";
+  }
+
+  function toCurrency(value) {
+    return "R$" + value.toFixed(2);
   }
 
   function addDigit(d) {
@@ -255,13 +279,14 @@
 
     let total = items.reduce((a, b) => a + b, 0);
     const stamps = total > 0 ? Math.floor(total / threshold) : 0;
-    const remainder = total % threshold;
-    const toNext = remainder === 0 ? 0 : threshold - remainder;
+    let remainder = total % threshold;
+
+    const toNext = remainder === 0 ? threshold : threshold - remainder;
 
     summaryDiv.innerHTML = `
-      Total: <span class="highlight">$${total.toFixed(2)}</span><br>
+      Total: <span class="highlight">${toCurrency(total)}</span><br>
       Stamps: <span class="highlight">${stamps}</span><br>
-      Next: <span class="highlight">$${toNext.toFixed(2)}</span>
+      Next: <span class="highlight">${toCurrency(toNext)}</span>
     `;
 
     items.forEach((price, i) => {
@@ -269,7 +294,7 @@
       row.className = "item";
 
       const label = document.createElement("span");
-      label.textContent = `$${price.toFixed(2)}`;
+      label.textContent = toCurrency(price);
       label.onclick = () => {
         const v = prompt("Edit price:", price.toFixed(2));
         if (v !== null) {
@@ -294,6 +319,11 @@
       row.appendChild(del);
       itemsDiv.appendChild(row);
     });
+
+    // progress bar:
+    const progressBar = document.getElementById("progressBar");
+    let progress = (threshold - toNext) / threshold * 100;
+    progressBar.style.width = `${Math.min(progress, 100)}%`;
   }
 
   updateDisplay();
