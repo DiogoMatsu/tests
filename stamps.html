@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stamp Calculator</title>
+
+  <style>
+    :root {
+      --bg: #0e0e11;
+      --card: #1f1f26;
+      --text: #ffffff;
+      --muted: #9aa0a6;
+      --accent: #4da3ff;
+      --border: #2a2a35;
+      --danger: #ff5c5c;
+    }
+
+    body {
+      margin: 0;
+      padding: 16px;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .container {
+      max-width: 420px;
+      margin: 0 auto;
+    }
+
+    button, select {
+      background: var(--card);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 16px;
+    }
+
+    .back-btn {
+      margin-bottom: 12px;
+      opacity: 0.8;
+    }
+
+    h1 {
+      font-size: 20px;
+      margin-bottom: 12px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+
+    .display {
+      font-size: 22px;
+      text-align: right;
+      padding: 12px;
+      background: #000;
+      border-radius: 8px;
+      margin-bottom: 10px;
+    }
+
+    .keypad {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .keypad button {
+      padding: 14px;
+      font-size: 18px;
+    }
+
+    .wide {
+      grid-column: span 3;
+    }
+
+    .quick {
+      background: #2a2a35;
+      font-weight: 600;
+    }
+
+    .item {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .item span {
+      cursor: pointer;
+    }
+
+    .item button {
+      background: none;
+      border: none;
+      color: var(--danger);
+      font-size: 16px;
+    }
+
+    .summary {
+      font-size: 15px;
+      margin-bottom: 8px;
+    }
+
+    .highlight {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .menu {
+      display: flex;
+      gap: 8px;
+    }
+
+    select {
+      width: 100%;
+    }
+  </style>
+</head>
+
+<body>
+<div class="container">
+
+  <button class="back-btn" onclick="location.href='index.html'">← Back</button>
+  <h1>Stamp Calculator</h1>
+
+  <div class="card">
+    <div class="display" id="display">0</div>
+
+    <div class="keypad">
+      <button onclick="addDigit('1')">1</button>
+      <button onclick="addDigit('2')">2</button>
+      <button onclick="addDigit('3')">3</button>
+      <button onclick="addDigit('4')">4</button>
+      <button onclick="addDigit('5')">5</button>
+      <button onclick="addDigit('6')">6</button>
+      <button onclick="addDigit('7')">7</button>
+      <button onclick="addDigit('8')">8</button>
+      <button onclick="addDigit('9')">9</button>
+
+      <button onclick="addDigit('.')">.</button>
+      <button onclick="addDigit('0')">0</button>
+      <button onclick="backspace()">⌫</button>
+
+      <button class="quick" onclick="quickAdd('.99')">+.99</button>
+      <button class="quick" onclick="quickAdd('.49')">+.49</button>
+      <button class="quick" onclick="quickAdd('.00')">+.00</button>
+
+      <button class="wide" onclick="clearInput()">Clear</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="menu">
+      <select id="menuSelect" onchange="handleMenu(this.value)">
+        <option value="">Options</option>
+        <option value="25">$25 per stamp</option>
+        <option value="20">$20 per stamp</option>
+        <option value="30">$30 per stamp</option>
+        <option value="clear">Clear all items</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="summary" id="summary"></div>
+    <div id="items"></div>
+  </div>
+
+</div>
+
+<script>
+  const STORAGE_ITEMS = "stamp_items";
+  const STORAGE_THRESHOLD = "stamp_threshold";
+
+  let input = "";
+  let items = JSON.parse(localStorage.getItem(STORAGE_ITEMS) || "[]");
+  let threshold = parseFloat(localStorage.getItem(STORAGE_THRESHOLD)) || 25;
+
+  const display = document.getElementById("display");
+  const itemsDiv = document.getElementById("items");
+  const summaryDiv = document.getElementById("summary");
+  const menuSelect = document.getElementById("menuSelect");
+
+  function save() {
+    localStorage.setItem(STORAGE_ITEMS, JSON.stringify(items));
+    localStorage.setItem(STORAGE_THRESHOLD, threshold);
+  }
+
+  function updateDisplay() {
+    display.textContent = input || "0";
+  }
+
+  function addDigit(d) {
+    if (d === "." && input.includes(".")) return;
+    input += d;
+    updateDisplay();
+  }
+
+  function backspace() {
+    input = input.slice(0, -1);
+    updateDisplay();
+  }
+
+  function clearInput() {
+    input = "";
+    updateDisplay();
+  }
+
+  function quickAdd(suffix) {
+    if (!input) return;
+    const value = parseFloat(input + suffix);
+    if (!isNaN(value)) {
+      items.push(value);
+      input = "";
+      updateDisplay();
+      save();
+      render();
+    }
+  }
+
+  function handleMenu(value) {
+    if (!value) return;
+
+    if (value === "clear") {
+      if (confirm("Delete all items?")) {
+        items = [];
+        save();
+        render();
+      }
+    } else {
+      threshold = parseFloat(value);
+      save();
+      render();
+    }
+
+    menuSelect.value = "";
+  }
+
+  function render() {
+    itemsDiv.innerHTML = "";
+
+    let total = items.reduce((a, b) => a + b, 0);
+    const stamps = Math.floor(total / threshold);
+    const remainder = total % threshold;
+    const toNext = remainder === 0 ? 0 : threshold - remainder;
+
+    summaryDiv.innerHTML = `
+      Total: <span class="highlight">$${total.toFixed(2)}</span><br>
+      Stamps: <span class="highlight">${stamps}</span><br>
+      ${
+            toNext === 0
+                    ? "Stamp earned 🎉"
+                    : `Spend <span class="highlight">$${toNext.toFixed(2)}</span> more`
+    }
+    `;
+
+    items.forEach((price, i) => {
+      const row = document.createElement("div");
+      row.className = "item";
+
+      const label = document.createElement("span");
+      label.textContent = `$${price.toFixed(2)}`;
+      label.onclick = () => {
+        const v = prompt("Edit price:", price.toFixed(2));
+        if (v !== null) {
+          const n = parseFloat(v);
+          if (!isNaN(n)) {
+            items[i] = n;
+            save();
+            render();
+          }
+        }
+      };
+
+      const del = document.createElement("button");
+      del.textContent = "✕";
+      del.onclick = () => {
+        items.splice(i, 1);
+        save();
+        render();
+      };
+
+      row.appendChild(label);
+      row.appendChild(del);
+      itemsDiv.appendChild(row);
+    });
+  }
+
+  updateDisplay();
+  render();
+</script>
+
+</body>
+</html>
