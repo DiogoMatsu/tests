@@ -89,7 +89,7 @@
       display: flex;
       justify-content: space-between;
       padding: 8px 0;
-      border-bottom: 1px solid var(--border);
+      border-top: 1px solid var(--border);
     }
 
     .item span {
@@ -162,7 +162,7 @@
         <option value="">Options</option>
         <option value="25">$25 per stamp</option>
         <option value="20">$20 per stamp</option>
-        <option value="30">$30 per stamp</option>
+        <option value="custom">Set Custom stamp</option>
         <option value="clear">Clear all items</option>
       </select>
     </div>
@@ -234,7 +234,14 @@
         save();
         render();
       }
-    } else {
+    }
+    if (value === "custom") {
+      const newValue = prompt("Edit price:", threshold.toFixed(2));
+      threshold = parseFloat(newValue);
+      save();
+      render();
+    }
+    else {
       threshold = parseFloat(value);
       save();
       render();
@@ -247,18 +254,14 @@
     itemsDiv.innerHTML = "";
 
     let total = items.reduce((a, b) => a + b, 0);
-    const stamps = Math.floor(total / threshold);
+    const stamps = total > 0 ? Math.floor(total / threshold) : 0;
     const remainder = total % threshold;
     const toNext = remainder === 0 ? 0 : threshold - remainder;
 
     summaryDiv.innerHTML = `
       Total: <span class="highlight">$${total.toFixed(2)}</span><br>
       Stamps: <span class="highlight">${stamps}</span><br>
-      ${
-            toNext === 0
-                    ? "Stamp earned 🎉"
-                    : `Spend <span class="highlight">$${toNext.toFixed(2)}</span> more`
-    }
+      Next: <span class="highlight">$${toNext.toFixed(2)}</span>
     `;
 
     items.forEach((price, i) => {
