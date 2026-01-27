@@ -143,32 +143,36 @@
 <body>
 <div class="container">
 
-  <button class="back-btn" onclick="location.href='index.html'">← Back</button>
-  <h1>Stamp Calculator</h1>
+<!--  <button class="back-btn" onclick="location.href='index.html'">← Back</button>-->
+<!--  <h1>Stamp Calculator</h1>-->
 
   <div class="card">
     <div class="display" id="display">0</div>
 
     <div class="keypad">
-      <button onclick="addDigit('1')">1</button>
-      <button onclick="addDigit('2')">2</button>
-      <button onclick="addDigit('3')">3</button>
-      <button onclick="addDigit('4')">4</button>
-      <button onclick="addDigit('5')">5</button>
-      <button onclick="addDigit('6')">6</button>
+
       <button onclick="addDigit('7')">7</button>
       <button onclick="addDigit('8')">8</button>
       <button onclick="addDigit('9')">9</button>
+
+      <button onclick="addDigit('4')">4</button>
+      <button onclick="addDigit('5')">5</button>
+      <button onclick="addDigit('6')">6</button>
+
+      <button onclick="addDigit('1')">1</button>
+      <button onclick="addDigit('2')">2</button>
+      <button onclick="addDigit('3')">3</button>
 
       <button onclick="addDigit('.')">.</button>
       <button onclick="addDigit('0')">0</button>
       <button onclick="backspace()">⌫</button>
 
-      <button class="quick" onclick="quickAdd('.99')">.99</button>
+<!--      <button class="quick" onclick="quickAdd('.99')">.99</button>-->
+      <button class="quick" onclick="quickAdd('.98')">.98</button>
+      <button class="quick" onclick="quickAdd('.89')">.89</button>
       <button class="quick" onclick="quickAdd('.49')">.49</button>
-      <button class="quick" onclick="quickAdd('.00')">.00</button>
 
-      <button class="wide" onclick="clearInput()">Clear</button>
+<!--      <button class="wide" onclick="clearInput()">Clear</button>-->
     </div>
   </div>
 
@@ -286,7 +290,7 @@
     summaryDiv.innerHTML = `
       Total: <span class="highlight">${toCurrency(total)}</span><br>
       Stamps: <span class="highlight">${stamps}</span><br>
-      Next: <span class="highlight">${toCurrency(toNext)}</span>
+      Next: <span class="highlight">${toCurrency(toNext)} / ${toCurrency(threshold)}</span>
     `;
 
     items.forEach((price, i) => {
