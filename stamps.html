@@ -137,6 +137,18 @@
     select {
       width: 100%;
     }
+
+    input {
+      background: #000;
+      color: white;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 16px;
+      width: 100%;
+    }
+
+
   </style>
 </head>
 
@@ -170,11 +182,47 @@
 <!--      <button class="quick" onclick="quickAdd('.99')">.99</button>-->
       <button class="quick" onclick="quickAdd('.98')">.98</button>
       <button class="quick" onclick="quickAdd('.89')">.89</button>
-      <button class="quick" onclick="quickAdd('.49')">.49</button>
+      <button class="quick" onclick="addItem()">↵</button>
+<!--      <button class="quick" onclick="quickAdd('.49')">.00</button>-->
+<!--      <button class="quick" onclick="quickAdd('.98')">.98</button>-->
+<!--      <button class="quick" onclick="quickAdd('.89')">.89</button>-->
+<!--      <button class="quick" onclick="quickAdd('.49')">.49</button>-->
 
 <!--      <button class="wide" onclick="clearInput()">Clear</button>-->
     </div>
   </div>
+
+  <div class="card">
+    <strong>By Weight</strong>
+
+    <div style="display:flex; gap:8px; margin-top:8px;">
+      <input
+              id="weight"
+              type="number"
+              inputmode="decimal"
+              placeholder="g"
+              step="0.001"
+              oninput="updateWeightPreview()"
+              style="flex:1;"
+      />
+      <input
+              id="pricePerKg"
+              type="number"
+              inputmode="decimal"
+              placeholder="R$/kg"
+              step="0.01"
+              oninput="updateWeightPreview()"
+              style="flex:1;"
+      />
+      <button onclick="addByWeight()">Add</button>
+    </div>
+
+    <div id="weightPreview" style="margin-top:6px; font-size:14px; color:var(--muted);">
+      &nbsp;
+    </div>
+  </div>
+
+
 
   <div class="card">
     <div class="menu">
@@ -245,12 +293,52 @@
     if (!input) return;
     const value = parseFloat(input + suffix);
     if (!isNaN(value)) {
-      items.push(value);
-      input = "";
-      updateDisplay();
-      save();
-      render();
+      addItem(value);
     }
+  }
+
+
+  function getCurrentWeightItem() {
+    let w = parseFloat(document.getElementById("weight").value);
+    const p = parseFloat(document.getElementById("pricePerKg").value);
+    if (isNaN(w) || isNaN(p) || w <= 0 || p <= 0) return null;
+
+    w /= 1000; // convert to grams
+    return w * p;
+  }
+  function updateWeightPreview() {
+    const total = getCurrentWeightItem();
+    const preview = document.getElementById("weightPreview");
+    if (total == null) {
+      preview.innerHTML = "&nbsp;";
+      return;
+    }
+    preview.textContent = `≈ ${toCurrency(total)}`;
+  }
+
+  function addByWeight() {
+    const total = getCurrentWeightItem();
+    if (total == null) return;
+
+    addItem(Number(total.toFixed(2)));
+
+    document.getElementById("weight").value = "";
+    document.getElementById("pricePerKg").value = "";
+    document.getElementById("weightPreview").innerHTML = "&nbsp;";
+  }
+
+
+  function addItem(value) {
+    if (value === undefined) {
+      if (!input) return;
+      value = parseFloat(input)
+    }
+
+    items.push(value);
+    input = "";
+    updateDisplay();
+    save();
+    render();
   }
 
   function handleMenu(value) {
@@ -263,7 +351,7 @@
         render();
       }
     }
-    if (value === "custom") {
+    else if (value === "custom") {
       const newValue = prompt("Edit price:", threshold.toFixed(2));
       threshold = parseFloat(newValue);
       save();
