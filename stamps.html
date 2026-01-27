@@ -90,10 +90,12 @@
       justify-content: space-between;
       padding: 8px 0;
       border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
     }
 
     .item span {
       cursor: pointer;
+      padding: 8px 0;
     }
 
     .item button {
@@ -154,6 +156,25 @@
 
 <body>
 <div class="container">
+
+  <div class="card">
+    <div class="menu">
+      <select id="menuSelect" onchange="handleMenu(this.value)">
+        <option value="">Options</option>
+        <option value="25">R$25 per stamp</option>
+        <option value="20">R$20 per stamp</option>
+        <option value="custom">Set Custom stamp</option>
+        <option value="clear">Clear all items</option>
+      </select>
+    </div>
+  </div>
+  <div class="card">
+    <div class="summary" id="summary"></div>
+    <div class="progress">
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
+  </div>
+
 
 <!--  <button class="back-btn" onclick="location.href='index.html'">← Back</button>-->
 <!--  <h1>Stamp Calculator</h1>-->
@@ -225,22 +246,6 @@
 
 
   <div class="card">
-    <div class="menu">
-      <select id="menuSelect" onchange="handleMenu(this.value)">
-        <option value="">Options</option>
-        <option value="25">R$25 per stamp</option>
-        <option value="20">R$20 per stamp</option>
-        <option value="custom">Set Custom stamp</option>
-        <option value="clear">Clear all items</option>
-      </select>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="summary" id="summary"></div>
-    <div class="progress">
-      <div class="progress-bar" id="progressBar"></div>
-    </div>
     <div id="items"></div>
   </div>
 
@@ -254,6 +259,7 @@
   let input = "";
   let items = JSON.parse(localStorage.getItem(STORAGE_ITEMS) || "[]");
   let threshold = parseFloat(localStorage.getItem(STORAGE_THRESHOLD)) || 25;
+  let lastProgress = 0;
 
   const display = document.getElementById("display");
   const itemsDiv = document.getElementById("items");
@@ -348,7 +354,7 @@
       if (confirm("Delete all items?")) {
         items = [];
         save();
-        render();
+        render(true);
       }
     }
     else if (value === "custom") {
@@ -366,7 +372,62 @@
     menuSelect.value = "";
   }
 
-  function render() {
+
+  function setProgress(newProgress, animate = true, isRemoveUpdate = false) {
+    const bar = document.getElementById("progressBar");
+    if (!bar) return;
+
+    newProgress = Math.max(0, Math.min(100, newProgress));
+
+    if (!animate) {
+      bar.style.transition = "none";
+      bar.style.width = `${newProgress}%`;
+      lastProgress = newProgress;
+      return;
+    }
+
+    const duration = 250;
+
+    // FORWARD CROSS (e.g. 70% -> 30%)
+    if (!isRemoveUpdate && newProgress < lastProgress) {
+      bar.style.transition = `width ${duration}ms ease`;
+      bar.style.width = "100%";
+
+      setTimeout(() => {
+        bar.style.transition = "none";
+        bar.style.width = "0%";
+        bar.offsetHeight;
+
+        bar.style.transition = `width ${duration}ms ease`;
+        bar.style.width = `${newProgress}%`;
+      }, duration);
+    }
+
+    // BACKWARD CROSS (e.g. 30% -> 70%)
+    else if (isRemoveUpdate && newProgress > lastProgress) {
+      bar.style.transition = `width ${duration}ms ease`;
+      bar.style.width = "0%";
+
+      setTimeout(() => {
+        bar.style.transition = "none";
+        bar.style.width = "100%";
+        bar.offsetHeight;
+
+        bar.style.transition = `width ${duration}ms ease`;
+        bar.style.width = `${newProgress}%`;
+      }, duration);
+    }
+
+    // NORMAL MOVE
+    else {
+      bar.style.transition = `width ${duration}ms ease`;
+      bar.style.width = `${newProgress}%`;
+    }
+
+    lastProgress = newProgress;
+  }
+
+  function render(isRemoveUpdate) {
     itemsDiv.innerHTML = "";
 
     let total = items.reduce((a, b) => a + b, 0);
@@ -404,7 +465,7 @@
       del.onclick = () => {
         items.splice(i, 1);
         save();
-        render();
+        render(true);
       };
 
       row.appendChild(label);
@@ -412,10 +473,11 @@
       itemsDiv.appendChild(row);
     });
 
-    // progress bar:
-    const progressBar = document.getElementById("progressBar");
+    // // progress bar:
+    // const progressBar = document.getElementById("progressBar");
     let progress = (threshold - toNext) / threshold * 100;
-    progressBar.style.width = `${Math.min(progress, 100)}%`;
+    // progressBar.style.width = `${Math.min(progress, 100)}%`;
+    setProgress(progress, true, isRemoveUpdate)
   }
 
   updateDisplay();
