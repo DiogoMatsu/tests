@@ -115,18 +115,46 @@
       font-weight: 600;
     }
 
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .summary-block {
+      flex: 1;
+      text-align: center;
+    }
+
+    .summary-value {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .summary-label {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+
     .menu {
       display: flex;
       gap: 8px;
     }
+
+    .progress-wrapper {
+      position: relative;
+      margin: 8px 0 12px;
+    }
+
     .progress {
       width: 100%;
       height: 8px;
       background: #000;
       border-radius: 6px;
-      overflow: hidden;
-      margin: 8px 0 12px;
-      position: relative;
+      overflow: hidden; /* keep bar clipped */
     }
 
     .progress-bar {
@@ -139,7 +167,7 @@
     .stamp-badge {
       position: absolute;
       right: 12px;
-      top: -18px;
+      top: -22px; /* float above bar */
       background: var(--accent);
       color: #000;
       font-size: 14px;
@@ -156,8 +184,6 @@
       opacity: 1;
       transform: translateY(0);
     }
-
-
 
     select {
       width: 100%;
@@ -185,7 +211,7 @@
       <select id="menuSelect" onchange="handleMenu(this.value)">
         <option value="">Options</option>
         <option value="25">R$25 per stamp</option>
-        <option value="20">R$20 per stamp</option>
+        <option value="30">R$30 per stamp</option>
         <option value="custom">Set Custom stamp</option>
         <option value="clear">Clear all items</option>
       </select>
@@ -193,10 +219,11 @@
   </div>
   <div class="card">
     <div class="summary" id="summary"></div>
-    <div class="progress">
-      <div class="progress-bar" id="progressBar">
-        <div class="stamp-badge" id="stampBadge"></div>
+    <div class="progress-wrapper">
+      <div class="progress">
+        <div class="progress-bar" id="progressBar"></div>
       </div>
+      <div class="stamp-badge" id="stampBadge"></div>
     </div>
   </div>
 
@@ -401,17 +428,8 @@
 
     newProgress = Math.max(0, Math.min(100, newProgress));
 
-    // if (!animate) {
-    //   bar.style.transition = "none";
-    //   bar.style.width = `${newProgress}%`;
-    //   return;
-    // }
-
-    // const FAST = 120;   // fast loops
-    // const NORMAL = 250; // final loop
-
-    const FAST = 300;   // fast loops
-    const NORMAL = 500; // final loop
+    const FAST = 500;   // fast loops
+    const NORMAL = 800; // final loop
 
     if (overflowAmount === undefined || overflowAmount === 0)
     {
@@ -468,13 +486,21 @@
       bar.style.transition = `width ${NORMAL}ms ease`;
       bar.style.width = `${newProgress}%`;
     }, FAST * cycles);
+
+    // show stamp count:
+    showStampBadge(overflowAmount);
   }
 
   function showStampBadge(count) {
     const badge = document.getElementById("stampBadge");
-    if (!badge || count <= 0) return;
+    if (!badge || count === 0) return;
 
-    badge.textContent = `+${count} stamp${count > 1 ? "s" : ""}`;
+    if (count > 0) {
+      badge.textContent = `+${count}`;
+    }
+    else {
+      badge.textContent = `${count}`;
+    }
     badge.classList.add("show");
 
     setTimeout(() => {
@@ -497,10 +523,28 @@
     const toNext = remainder === 0 ? threshold : threshold - remainder;
 
     summaryDiv.innerHTML = `
-      Total: <span class="highlight">${toCurrency(total)}</span><br>
-      Stamps: <span class="highlight">${stamps}</span><br>
-      Next: <span class="highlight">${toCurrency(toNext)} / ${toCurrency(threshold)}</span>
-    `;
+  <div class="summary-row">
+    <div class="summary-block">
+      <div class="summary-value">${toCurrency(total)}</div>
+      <div class="summary-label">Total</div>
+    </div>
+
+    <div class="summary-block">
+      <div class="summary-value">${stamps}</div>
+      <div class="summary-label">Stamps</div>
+    </div>
+
+    <div class="summary-block">
+      <div class="summary-value">
+        ${toNext === 0 ? "✓" : `${toCurrency(toNext)}`}
+      </div>
+      <div class="summary-label">
+        ${toNext === 0 ? "Complete" : "To next"}
+      </div>
+    </div>
+  </div>
+`;
+
 
     items.forEach((price, i) => {
       const row = document.createElement("div");
