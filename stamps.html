@@ -65,6 +65,16 @@
       margin-bottom: 10px;
     }
 
+    .display span {
+      display: inline-block;
+      transition: transform 0.12s ease, opacity 0.12s ease;
+    }
+
+    .display span.bump {
+      transform: translateY(-2px) scale(1.06);
+      opacity: 0.9;
+    }
+
     .keypad {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -75,6 +85,16 @@
       padding: 14px;
       font-size: 18px;
     }
+
+    .keypad button {
+      transition: transform 0.08s ease, background-color 0.08s ease;
+    }
+
+    .keypad button:active {
+      transform: scale(0.9);
+      background-color: #2f2f3a;
+    }
+
 
     .wide {
       grid-column: span 3;
@@ -211,7 +231,7 @@
       <select id="menuSelect" onchange="handleMenu(this.value)">
         <option value="">Options</option>
         <option value="25">R$25 per stamp</option>
-        <option value="30">R$30 per stamp</option>
+        <option value="30">R$30 per stamp</option >
         <option value="custom">Set Custom stamp</option>
         <option value="clear">Clear all items</option>
       </select>
@@ -232,7 +252,10 @@
 <!--  <h1>Stamp Calculator</h1>-->
 
   <div class="card">
-    <div class="display" id="display">0</div>
+    <div class="display">
+      <span id="displayText">0</span>
+    </div>
+
 
     <div class="keypad">
 
@@ -309,7 +332,7 @@
   // let lastProgress = 0;
   let lastStampCount = null;
 
-  const display = document.getElementById("display");
+  const display = document.getElementById("displayText");
   const itemsDiv = document.getElementById("items");
   const summaryDiv = document.getElementById("summary");
   const menuSelect = document.getElementById("menuSelect");
@@ -320,8 +343,20 @@
   }
 
   function updateDisplay() {
-    display.textContent = input || "0";
+    const text = input || "0";
+    const span = document.getElementById("displayText");
+
+    span.textContent = text;
+
+    span.classList.remove("bump");
+    void span.offsetWidth; // force reflow
+    span.classList.add("bump");
+
+    setTimeout(() => {
+      span.classList.remove("bump");
+    }, 120);
   }
+
 
   function toCurrency(value) {
     return "R$" + value.toFixed(2);
