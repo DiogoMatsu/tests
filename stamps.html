@@ -65,9 +65,20 @@
       margin-bottom: 10px;
     }
 
+    /*.display span {*/
+    /*  display: inline-block;*/
+    /*  transition: transform 0.12s ease, opacity 0.12s ease;*/
+    /*}*/
     .display span {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+
+      font-size: clamp(32px, 9vw, 48px);
+      line-height: 1.1;
+
       display: inline-block;
-      transition: transform 0.12s ease, opacity 0.12s ease;
+      white-space: nowrap;
     }
 
     .display span.bump {
@@ -219,6 +230,19 @@
       width: 100%;
     }
 
+    @keyframes reject {
+      0%   { transform: translateX(0); color: inherit; }
+      25%  { transform: translateX(-3px); color: #ff5a5a; }
+      50%  { transform: translateX(3px); color: #ff5a5a;}
+      75%  { transform: translateX(-2px); color: #ff5a5a;}
+      100% { transform: translateX(0); color: inherit; }
+    }
+
+    .display span.reject {
+      animation: reject 0.18s ease;
+    }
+
+
 
   </style>
 </head>
@@ -357,16 +381,64 @@
     }, 120);
   }
 
-
   function toCurrency(value) {
     return "R$" + value.toFixed(2);
   }
 
-  function addDigit(d) {
-    if (d === "." && input.includes(".")) return;
-    input += d;
-    updateDisplay();
+  /**
+   * Validate a new digit before adding.
+   * Returns true if valid, false if invalid.
+   * @param d
+   */
+  function isValidNewDigit(d)
+  {
+    // Only allow digits or "."
+    if (!/^[0-9.]$/.test(d)) return false;
+
+    // Prevent multiple dots
+    if (d === "." && input.includes(".")) return false;
+
+    let next = input + d;
+
+    // Split integer / decimal parts
+    const [intPart, decPart = ""] = next.split(".");
+
+    // Limit integer part to 3 digits (max 999)
+    if (intPart.length > 3) return false;
+    if (Number(intPart) > 999) return false;
+
+    // Limit decimal part to 2 digits
+    if (decPart.length > 2) return false;
+    return true;
   }
+
+  function addDigit(d) {
+    if (input === "" && d === ".") {
+      input = "0.";
+      updateDisplay();
+      return;
+    }
+
+    if (isValidNewDigit(d)) {
+      input += d;
+      updateDisplay();
+    }
+    else {
+      rejectInput();
+    }
+  }
+
+  function rejectInput() {
+    const span = document.getElementById("displayText");
+
+    span.classList.remove("reject");
+    void span.offsetWidth; // reflow
+    span.classList.add("reject");
+
+    if (navigator.vibrate) navigator.vibrate(8);
+  }
+
+
 
   function backspace() {
     input = input.slice(0, -1);
