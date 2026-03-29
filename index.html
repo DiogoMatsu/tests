@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <title>Personal Hub</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
   <style>
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
@@ -15,9 +16,11 @@
       height: 100vh;
       margin: 0;
     }
+
     .hub {
       text-align: center;
     }
+
     a {
       display: block;
       padding: 14px 20px;
@@ -27,16 +30,57 @@
       text-decoration: none;
       margin-top: 12px;
     }
+
     a:hover {
       background: #2a2a35;
     }
+
+    /* Hide Entries initially */
+    #entriesLink {
+      display: none;
+    }
   </style>
 </head>
+
 <body>
-<div class="hub">
+
+<div class="hub" id="hub">
   <h2>My Tools</h2>
-  <a href="entries.html">Entries</a>
+
+  <!-- Hidden initially -->
+  <a href="entries.html" id="entriesLink">Entries</a>
+
   <a href="stamps.html">Stamps</a>
+  <a href="trips.html">Trips</a>
 </div>
+
+<script>
+  let holdTimer;
+
+  const entriesLink = document.getElementById("entriesLink");
+
+  function startHold() {
+    holdTimer = setTimeout(() => {
+      entriesLink.style.display = "block";
+    }, 5000); // 5 seconds
+  }
+
+  function cancelHold() {
+    clearTimeout(holdTimer);
+  }
+
+  // Listen on entire page
+  const target = document.body;
+
+  // Touch events (mobile)
+  target.addEventListener("touchstart", startHold);
+  target.addEventListener("touchend", cancelHold);
+  target.addEventListener("touchcancel", cancelHold);
+
+  // Mouse events (desktop)
+  target.addEventListener("mousedown", startHold);
+  target.addEventListener("mouseup", cancelHold);
+  target.addEventListener("mouseleave", cancelHold);
+</script>
 </body>
 </html>
