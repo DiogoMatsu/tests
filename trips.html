@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Travel Spending</title>
+
+<style>
+body {
+    font-family: system-ui, sans-serif;
+    margin: 0;
+    background: #f2f2f2;
+}
+
+header {
+    background: #333;
+    color: white;
+    padding: 12px;
+    font-size: 20px;
+    text-align: center;
+}
+
+.container {
+    padding: 10px;
+}
+
+input, select, textarea, button {
+    font-size: 16px;
+    padding: 8px;
+    margin: 4px 0;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+textarea {
+    resize: none;
+    height: 40px;
+}
+
+button {
+    background: #007aff;
+    color: white;
+    border: none;
+    border-radius: 6px;
+}
+
+.history {
+    height: 45vh;
+    overflow-y: auto;
+    background: white;
+    padding: 8px;
+    border-radius: 8px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+td, th {
+    padding: 6px;
+    border-bottom: 1px solid #ddd;
+    text-align: left;
+}
+
+.day-total {
+    font-weight: bold;
+}
+
+.total {
+    font-weight: bold;
+}
+
+.hidden {
+    display: none;
+}
+
+.delete-btn {
+    background: #ff3b30;
+}
+
+</style>
+</head>
+
+<body>
+
+<header id="title" contenteditable="true"></header>
+
+<div class="container">
+
+<select id="typeSelect"></select>
+
+<div style="display:flex; gap:6px;">
+<input id="valueInput" type="number" placeholder="Value">
+<select id="currencySelect"></select>
+</div>
+
+<textarea id="notesInput" placeholder="Notes (optional)"></textarea>
+
+<button onclick="addEntry()">Add Entry</button>
+
+<hr>
+
+<div class="history" id="history"></div>
+
+<hr>
+
+<button onclick="toggleAdvanced()">Advanced Options</button>
+
+<div id="advancedMenu" class="hidden">
+
+<button onclick="exportCSV()">Export to Sheets (CSV)</button>
+<button onclick="copyJSON()">Export to Clipboard</button>
+<button onclick="importJSON()">Import from Clipboard</button>
+<button onclick="clearAll()">Clear All Data</button>
+
+</div>
+
+</div>
+
+<script>
+
+/* ========= CONFIG ========= */
+
+const TYPES = [
+    {name:"Uber", color:"#ffd166"},
+    {name:"Meal", color:"#ef476f"},
+    {name:"Gift", color:"#06d6a0"},
+    {name:"Hotel", color:"#118ab2"},
+    {name:"Flight", color:"#9b5de5"}
+];
+
+const CURRENCIES = [
+    {code:"brl", label:"🇧🇷 Real", locale:"pt-BR"},
+    {code:"usd", label:"🇺🇸 Dollar", locale:"en-US"},
+    {code:"eur", label:"🇪🇺 Euro", locale:"de-DE"},
+    {code:"jpy", label:"🇯🇵 Yen", locale:"ja-JP"}
+];
+
+/* ========= STORAGE ========= */
+
+function loadData() {
+    return JSON.parse(localStorage.getItem("spendings") || "[]");
+}
+
+function saveData(data) {
+    localStorage.setItem("spendings", JSON.stringify(data));
+}
+
+/* ========= TITLE ========= */
+
+function initTitle() {
+
+    const title = document.getElementById("title");
+
+    title.textContent = localStorage.getItem("title") || "Travel Spending";
+
+    title.addEventListener("blur", () => {
+        localStorage.setItem("title", title.textContent);
+    });
+}
+
+/* ========= INIT ========= */
+
+function init() {
+
+    initTitle();
+
+    const typeSelect = document.getElementById("typeSelect");
+
+    TYPES.forEach(t=>{
+        const o=document.createElement("option");
+        o.text=t.name;
+        o.value=t.name;
+        o.style.background=t.color;
+        typeSelect.appendChild(o);
+    });
+
+    const currencySelect=document.getElementById("currencySelect");
+
+    const lastCurrency = localStorage.getItem("lastCurrency");
+
+    CURRENCIES.forEach(c=>{
+        const o=document.createElement("option");
+        o.text=c.label;
+        o.value=c.code;
+        currencySelect.appendChild(o);
+
+        if(c.code===lastCurrency) {
+            currencySelect.value=c.code;
+        }
+    });
+
+    currencySelect.addEventListener("change", ()=>{
+        localStorage.setItem("lastCurrency", currencySelect.value);
+    });
+
+    renderHistory();
+}
+
+/* ========= FORMAT ========= */
+
+function formatCurrency(value, currencyCode) {
+
+    const c = CURRENCIES.find(x=>x.code===currencyCode);
+
+    return new Intl.NumberFormat(c.locale, {
+        style: "currency",
+        currency: currencyCode.toUpperCase()
+    }).format(value);
+
+}
+
+/* ========= DATE ========= */
+
+function getLocalDateTime() {
+
+    const d=new Date();
+
+    return {
+        day: d.toISOString().slice(0,10)
+    };
+}
+
+/* ========= ADD ========= */
+
+function addEntry() {
+
+    const type=document.getElementById("typeSelect").value;
+    const value=document.getElementById("valueInput").value;
+    const currency=document.getElementById("currencySelect").value;
+    const notes=document.getElementById("notesInput").value;
+
+    if(!value) return;
+
+    const {day}=getLocalDateTime();
+
+    const data=loadData();
+
+    data.push({
+        type,
+        value:Number(value),
+        currency,
+        notes,
+        day
+    });
+
+    saveData(data);
+
+    document.getElementById("valueInput").value="";
+    document.getElementById("notesInput").value="";
+
+    renderHistory();
+}
+
+/* ========= DELETE ========= */
+
+function deleteEntry(index) {
+
+    const data=loadData();
+
+    if(confirm("Delete this entry?")) {
+
+        data.splice(index,1);
+
+        saveData(data);
+
+        renderHistory();
+    }
+}
+
+/* ========= INLINE EDIT ========= */
+
+function updateEntry(index, field, value) {
+
+    const data=loadData();
+
+    if(field==="value") {
+        data[index][field]=Number(value);
+    } else {
+        data[index][field]=value;
+    }
+
+    saveData(data);
+
+    renderHistory();
+}
+
+/* ========= RENDER ========= */
+
+function renderHistory() {
+
+    const history=document.getElementById("history");
+    history.innerHTML="";
+
+    const data=loadData();
+
+    const days={};
+
+    data.forEach((e,i)=>{
+        if(!days[e.day]) days[e.day]=[];
+        days[e.day].push({entry:e,index:i});
+    });
+
+    Object.keys(days).sort().forEach(day=>{
+
+        const details=document.createElement("details");
+        details.open=true;
+
+        const summary=document.createElement("summary");
+        summary.textContent="> "+day;
+
+        details.appendChild(summary);
+
+        const table=document.createElement("table");
+
+        const totals={};
+
+        days[day].forEach(obj=>{
+
+            const e=obj.entry;
+
+            if(!totals[e.currency]) totals[e.currency]=0;
+            totals[e.currency]+=e.value;
+
+            const tr=document.createElement("tr");
+
+            /* TYPE */
+            const tdType=document.createElement("td");
+
+            const typeSelect=document.createElement("select");
+
+            TYPES.forEach(t=>{
+                const o=document.createElement("option");
+                o.value=t.name;
+                o.text=t.name;
+                if(t.name===e.type) o.selected=true;
+                typeSelect.appendChild(o);
+            });
+
+            typeSelect.onchange=(ev)=>
+                updateEntry(obj.index,"type",ev.target.value);
+
+            tdType.appendChild(typeSelect);
+
+            /* VALUE */
+            const tdValue=document.createElement("td");
+
+            const valueInput=document.createElement("input");
+            valueInput.type="number";
+            valueInput.value=e.value;
+
+            valueInput.onchange=(ev)=>
+                updateEntry(obj.index,"value",ev.target.value);
+
+            tdValue.appendChild(valueInput);
+
+            /* CURRENCY */
+            const tdCurrency=document.createElement("td");
+
+            const currencySelect=document.createElement("select");
+
+            CURRENCIES.forEach(c=>{
+                const o=document.createElement("option");
+                o.value=c.code;
+                o.text=c.label;
+                if(c.code===e.currency) o.selected=true;
+                currencySelect.appendChild(o);
+            });
+
+            currencySelect.onchange=(ev)=>
+                updateEntry(obj.index,"currency",ev.target.value);
+
+            tdCurrency.appendChild(currencySelect);
+
+            /* NOTES */
+            const tdNotes=document.createElement("td");
+
+            const notesInput=document.createElement("input");
+            notesInput.value=e.notes;
+
+            notesInput.onchange=(ev)=>
+                updateEntry(obj.index,"notes",ev.target.value);
+
+            tdNotes.appendChild(notesInput);
+
+            /* DELETE */
+            const tdDelete=document.createElement("td");
+
+            const delBtn=document.createElement("button");
+            delBtn.textContent="Delete";
+            delBtn.className="delete-btn";
+
+            delBtn.onclick=()=>deleteEntry(obj.index);
+
+            tdDelete.appendChild(delBtn);
+
+            tr.appendChild(tdType);
+            tr.appendChild(tdValue);
+            tr.appendChild(tdCurrency);
+            tr.appendChild(tdNotes);
+            tr.appendChild(tdDelete);
+
+            table.appendChild(tr);
+
+        });
+
+        /* DAY TOTAL */
+
+        const totalRow=document.createElement("tr");
+        const tdTotal=document.createElement("td");
+        tdTotal.colSpan=5;
+        tdTotal.className="day-total";
+
+        let txt="Total: ";
+
+        Object.keys(totals).forEach(c=>{
+            txt+=formatCurrency(totals[c],c)+"  ";
+        });
+
+        tdTotal.textContent=txt;
+
+        totalRow.appendChild(tdTotal);
+
+        table.appendChild(totalRow);
+
+        details.appendChild(table);
+
+        history.appendChild(details);
+
+    });
+
+    renderTotals(data);
+}
+
+/* ========= GLOBAL TOTAL ========= */
+
+function renderTotals(data) {
+
+    const history=document.getElementById("history");
+
+    const details=document.createElement("details");
+    details.open=false;
+
+    const summary=document.createElement("summary");
+    summary.textContent="> Total Spent";
+
+    details.appendChild(summary);
+
+    const totals={};
+
+    data.forEach(e=>{
+        if(!totals[e.currency]) totals[e.currency]=0;
+        totals[e.currency]+=e.value;
+    });
+
+    Object.keys(totals).forEach(c=>{
+
+        const div=document.createElement("div");
+        div.className="total";
+        div.textContent=formatCurrency(totals[c],c);
+
+        details.appendChild(div);
+
+    });
+
+    history.appendChild(details);
+}
+
+/* ========= CSV ========= */
+
+function exportCSV() {
+
+    const data=loadData();
+
+    let csv="type\tvalue\tcurrency\tnotes\n";
+
+    data.forEach(e=>{
+        csv+=`${e.type}\t${e.value}\t${e.currency}\t${e.notes}\n`;
+    });
+
+    navigator.clipboard.writeText(csv);
+
+    alert("CSV copied to clipboard.");
+}
+
+/* ========= JSON ========= */
+
+function copyJSON() {
+
+    navigator.clipboard.writeText(
+        JSON.stringify(loadData())
+    );
+
+    alert("JSON copied.");
+}
+
+async function importJSON() {
+
+    const text=await navigator.clipboard.readText();
+
+    saveData(JSON.parse(text));
+
+    renderHistory();
+
+}
+
+/* ========= CLEAR ========= */
+
+function clearAll() {
+
+    if(confirm("Clear all data?")) {
+
+        localStorage.removeItem("spendings");
+
+        renderHistory();
+    }
+}
+
+/* ========= ADVANCED ========= */
+
+function toggleAdvanced() {
+
+    document
+        .getElementById("advancedMenu")
+        .classList.toggle("hidden");
+
+}
+
+/* ========= START ========= */
+
+init();
+
+</script>
+
+</body>
+</html>
