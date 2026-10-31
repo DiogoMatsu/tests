@@ -89,6 +89,20 @@ button:disabled {
     text-overflow: ellipsis;
 }
 
+/* notes; tap to edit */
+.entry .entry-notes {
+    background: #f5f5f5;
+    color: #333;
+    text-align: left;
+    min-height: 32px;
+    white-space: normal;
+    word-break: break-word;
+}
+
+.entry .entry-notes.empty {
+    color: #999;
+}
+
 .day-total {
     font-weight: bold;
     padding: 6px 0 10px;
@@ -191,11 +205,11 @@ details > summary {
 <div id="extraFields" class="extra-fields"></div>
 
 <div style="display:flex; gap:6px;">
-<input id="valueInput" type="text" inputmode="decimal" placeholder="Value">
+<input id="valueInput" autocomplete="off" type="text" inputmode="decimal" placeholder="Value">
 <select id="currencySelect"></select>
 </div>
 
-<textarea id="notesInput" placeholder="Notes (optional)"></textarea>
+<textarea id="notesInput" autocomplete="off" placeholder="Notes (optional)"></textarea>
 
 <button id="addButton" onclick="addEntry()" disabled>Add Entry</button>
 
@@ -209,7 +223,7 @@ details > summary {
 <div class="modal-box">
 <div id="valueModalLabel"></div>
 <div style="display:flex; gap:6px;">
-<input id="valueModalInput" type="text" inputmode="decimal">
+<input id="valueModalInput" autocomplete="off" type="text" inputmode="decimal">
 <select id="valueModalCurrency"></select>
 </div>
 <div class="modal-buttons">
@@ -224,6 +238,17 @@ details > summary {
 <div><b>Visible Currencies</b></div>
 <div id="currencyModalList"></div>
 <button onclick="closeCurrencyConfig()">Done</button>
+</div>
+</div>
+
+<div id="notesModal" class="modal hidden" onclick="if(event.target===this) closeNotesEditor()">
+<div class="modal-box">
+<div id="notesModalLabel"></div>
+<input id="notesModalInput" autocomplete="off" type="text" placeholder="Notes">
+<div class="modal-buttons">
+<button class="cancel-btn" onclick="closeNotesEditor()">Cancel</button>
+<button onclick="saveNotesEditor()">Save</button>
+</div>
 </div>
 </div>
 
@@ -264,7 +289,7 @@ const TYPES = [
     {name:"Dinner", color:"#c9184a"},
     {name:"Shopping", color:"#83c5be"},
     {name:"Gift", color:"#06d6a0"},
-    {name:"Hotel", color:"#118ab2", fields:[{id:"name", label:"Name"}, {id:"days", label:"Days", inputmode:"numeric", format:formatDays}]},
+    {name:"Hotel", color:"#118ab2", fields:[{id:"hotel", label:"Hotel"}, {id:"days", label:"Days", inputmode:"numeric", format:formatDays}]},
     {name:"Flight", color:"#9b5de5", fields:[{id:"from", label:"From"}, {id:"to", label:"To"}]},
     {name:"Other", color:"#adb5bd"}
 ];
@@ -410,6 +435,10 @@ function init() {
         if(ev.key==="Enter") saveValueEditor();
     });
 
+    document.getElementById("notesModalInput").addEventListener("keydown", ev=>{
+        if(ev.key==="Enter") saveNotesEditor();
+    });
+
     renderHistory();
 }
 
@@ -505,6 +534,7 @@ function renderExtraFields() {
 
     (type.fields || []).forEach(f=>{
         const input=document.createElement("input");
+        input.autocomplete="off";
         input.id="extra-"+f.id;
         input.dataset.field=f.id;
         input.value=extra[f.id] || "";
@@ -653,15 +683,6 @@ function updateEntry(index, field, value) {
     renderHistory();
 }
 
-/* saves without re-rendering, so the field keeps focus while typing */
-function saveField(index, field, value) {
-
-    const data=loadData();
-
-    data[index][field]=value;
-
-    saveData(data);
-}
 
 /* ========= VALUE EDITOR ========= */
 
@@ -710,6 +731,37 @@ function saveValueEditor() {
     }
 
     closeValueEditor();
+}
+
+/* ========= NOTES EDITOR ========= */
+
+let editingNotesIndex=null;
+
+function openNotesEditor(index) {
+
+    const e=loadData()[index];
+
+    editingNotesIndex=index;
+
+    document.getElementById("notesModalLabel").textContent=e.type;
+
+    const input=document.getElementById("notesModalInput");
+    input.value=e.notes;
+
+    document.getElementById("notesModal").classList.remove("hidden");
+
+    /* must happen inside the tap for iOS to open the keyboard */
+    input.focus();
+}
+
+function closeNotesEditor() {
+    editingNotesIndex=null;
+    document.getElementById("notesModal").classList.add("hidden");
+}
+
+function saveNotesEditor() {
+    updateEntry(editingNotesIndex,"notes",document.getElementById("notesModalInput").value.trim());
+    closeNotesEditor();
 }
 
 /* ========= RENDER ========= */
@@ -788,15 +840,11 @@ function renderHistory() {
             delBtn.onclick=()=>deleteEntry(obj.index);
 
             /* NOTES */
-            const notesInput=document.createElement("input");
-            notesInput.value=e.notes;
-            notesInput.placeholder="Notes";
+            const notesBtn=document.createElement("button");
+            notesBtn.className="entry-notes"+(e.notes ? "" : " empty");
+            notesBtn.textContent=e.notes || "Add notes";
 
-            notesInput.oninput=(ev)=>
-                saveField(obj.index,"notes",ev.target.value);
-
-            notesInput.onchange=(ev)=>
-                updateEntry(obj.index,"notes",ev.target.value);
+            notesBtn.onclick=()=>openNotesEditor(obj.index);
 
             row.appendChild(typeSelect);
             row.appendChild(valueBtn);
@@ -804,7 +852,7 @@ function renderHistory() {
 
             /* notes go on their own line so the main row has room */
             entry.appendChild(row);
-            entry.appendChild(notesInput);
+            entry.appendChild(notesBtn);
 
             details.appendChild(entry);
 
