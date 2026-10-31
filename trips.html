@@ -10,7 +10,7 @@ body {
     font-family: system-ui, sans-serif;
     margin: 0;
     padding-bottom: 70px; /* room for the fixed Advanced Options bar */
-    background: #f2f2f2;
+    background: white;
 }
 
 header {
@@ -45,52 +45,83 @@ button {
     border-radius: 6px;
 }
 
+button:disabled {
+    background: #b0cff5;
+}
+
 .advanced {
     position: fixed;
     left: 0;
     right: 0;
     bottom: 0;
     padding: 6px 10px;
-    background: #f2f2f2;
+    background: white;
     border-top: 1px solid #ddd;
 }
 
-.history {
-    height: 45vh;
-    overflow-y: auto;
-    background: white;
-    padding: 8px;
-    border-radius: 8px;
+.entry {
+    border-bottom: 1px solid #ddd;
+    padding: 4px 0;
 }
 
-table {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: fixed;
+.entry-row {
+    display: flex;
+    gap: 4px;
 }
 
-td, th {
-    padding: 2px;
-    text-align: left;
-}
-
-table input, table select, table button {
+.entry input, .entry select, .entry button {
     padding: 6px 4px;
     margin: 2px 0;
 }
 
 /* type takes the remaining space; the other columns stay fixed */
-.col-value { width: 72px; }
-.col-currency { width: 60px; }
-.col-delete { width: 40px; }
+.entry-type { flex: 1; min-width: 0; }
+.entry-value { flex: none; width: 100px; }
+.entry .delete-btn { flex: none; width: 40px; }
 
-.notes-row td {
-    border-bottom: 1px solid #ddd;
-    padding-bottom: 6px;
+/* formatted value; tap to edit */
+.entry .entry-value {
+    background: #eef4ff;
+    color: #007aff;
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .day-total {
     font-weight: bold;
+    padding: 6px 0 10px;
+}
+
+.modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+}
+
+.modal.hidden {
+    display: none;
+}
+
+.modal-box {
+    background: white;
+    padding: 12px;
+    border-radius: 10px;
+    width: 80%;
+}
+
+.modal-buttons {
+    display: flex;
+    gap: 6px;
+}
+
+.cancel-btn {
+    background: #8e8e93;
 }
 
 .total {
@@ -99,6 +130,41 @@ table input, table select, table button {
 
 .hidden {
     display: none;
+}
+
+/* "Hide currency" option for single-currency trips */
+.no-currency #currencySelect,
+.no-currency #valueModalCurrency {
+    display: none;
+}
+
+/* indent fold-out contents under their heading */
+details {
+    padding-left: 20px;
+}
+
+details > summary {
+    margin-left: -20px;
+}
+
+.advanced summary {
+    font-size: 16px;
+    font-weight: bold;
+    padding: 8px 0;
+}
+
+.toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 16px;
+    padding: 8px 0;
+}
+
+.toggle input {
+    width: auto;
+    margin: 0;
+    transform: scale(1.4);
 }
 
 .delete-btn {
@@ -131,7 +197,7 @@ table input, table select, table button {
 
 <textarea id="notesInput" placeholder="Notes (optional)"></textarea>
 
-<button onclick="addEntry()">Add Entry</button>
+<button id="addButton" onclick="addEntry()" disabled>Add Entry</button>
 
 <hr>
 
@@ -139,24 +205,55 @@ table input, table select, table button {
 
 </div>
 
+<div id="valueModal" class="modal hidden" onclick="if(event.target===this) closeValueEditor()">
+<div class="modal-box">
+<div id="valueModalLabel"></div>
+<div style="display:flex; gap:6px;">
+<input id="valueModalInput" type="text" inputmode="decimal">
+<select id="valueModalCurrency"></select>
+</div>
+<div class="modal-buttons">
+<button class="cancel-btn" onclick="closeValueEditor()">Cancel</button>
+<button onclick="saveValueEditor()">Save</button>
+</div>
+</div>
+</div>
+
+<div id="currencyModal" class="modal hidden" onclick="if(event.target===this) closeCurrencyConfig()">
+<div class="modal-box">
+<div><b>Visible Currencies</b></div>
+<div id="currencyModalList"></div>
+<button onclick="closeCurrencyConfig()">Done</button>
+</div>
+</div>
+
 <div class="advanced">
 
-<button onclick="toggleAdvanced()">Advanced Options</button>
+<details id="advancedDetails">
+<summary>Advanced Options</summary>
 
-<div id="advancedMenu" class="hidden">
+<label class="toggle">
+<input id="hideCurrencyToggle" type="checkbox">
+Hide currency
+</label>
 
+<button onclick="openCurrencyConfig()">Visible Currencies</button>
 <button onclick="exportCSV()">Export to Sheets (CSV)</button>
 <button onclick="copyJSON()">Export to Clipboard</button>
 <button onclick="importJSON()">Import from Clipboard</button>
 <button onclick="clearAll()">Clear All Data</button>
 
-</div>
+</details>
 
 </div>
 
 <script>
 
 /* ========= CONFIG ========= */
+
+function formatDays(days) {
+    return days+(Number(days)===1 ? " day" : " days");
+}
 
 /* fields: extra inputs shown for the type; their values are joined with " - " into notes */
 const TYPES = [
@@ -167,7 +264,7 @@ const TYPES = [
     {name:"Dinner", color:"#c9184a"},
     {name:"Shopping", color:"#83c5be"},
     {name:"Gift", color:"#06d6a0"},
-    {name:"Hotel", color:"#118ab2", fields:[{id:"name", label:"Name"}, {id:"days", label:"Days", inputmode:"numeric"}]},
+    {name:"Hotel", color:"#118ab2", fields:[{id:"name", label:"Name"}, {id:"days", label:"Days", inputmode:"numeric", format:formatDays}]},
     {name:"Flight", color:"#9b5de5", fields:[{id:"from", label:"From"}, {id:"to", label:"To"}]},
     {name:"Other", color:"#adb5bd"}
 ];
@@ -180,13 +277,10 @@ const CURRENCIES = [
     {code:"usd", label:"🇺🇸 Dollar", locale:"en-US"},
     {code:"eur", label:"🇪🇺 Euro", locale:"de-DE"},
     {code:"jpy", label:"🇯🇵 Yen", locale:"ja-JP"},
+    {code:"pyg", label:"🇵🇾 Guarani", locale:"es-PY"},
     {code:"other", label:"🌐 Other", locale:"en-US"}
 ];
 
-/* flag only, used in the entries list */
-function currencyFlag(c) {
-    return c.label.split(" ")[0];
-}
 
 /* ========= STORAGE ========= */
 
@@ -231,6 +325,20 @@ function saveDraft() {
     localStorage.setItem("draft", JSON.stringify(draft));
 }
 
+/* fold-out open/closed state, kept across reloads and re-renders */
+function rememberFold(details, key, defaultOpen) {
+
+    const folds=JSON.parse(localStorage.getItem("folds") || "{}");
+
+    details.open=key in folds ? folds[key] : defaultOpen;
+
+    details.addEventListener("toggle", ()=>{
+        const folds=JSON.parse(localStorage.getItem("folds") || "{}");
+        folds[key]=details.open;
+        localStorage.setItem("folds", JSON.stringify(folds));
+    });
+}
+
 /* ========= TITLE ========= */
 
 function initTitle() {
@@ -249,6 +357,8 @@ function initTitle() {
 function init() {
 
     initTitle();
+
+    rememberFold(document.getElementById("advancedDetails"), "advanced", false);
 
     const typeSelect = document.getElementById("typeSelect");
 
@@ -275,26 +385,107 @@ function init() {
     ["valueInput","notesInput","extraFields"].forEach(id=>
         document.getElementById(id).addEventListener("input", saveDraft));
 
+    document.getElementById("valueInput").addEventListener("input", updateAddButton);
+    updateAddButton();
+
     const currencySelect=document.getElementById("currencySelect");
 
-    const lastCurrency = localStorage.getItem("lastCurrency");
-
-    CURRENCIES.forEach(c=>{
-        const o=document.createElement("option");
-        o.text=c.label;
-        o.value=c.code;
-        currencySelect.appendChild(o);
-
-        if(c.code===lastCurrency) {
-            currencySelect.value=c.code;
-        }
-    });
+    fillCurrencySelect(currencySelect, localStorage.getItem("lastCurrency"));
 
     currencySelect.addEventListener("change", ()=>{
         localStorage.setItem("lastCurrency", currencySelect.value);
     });
 
+    const hideCurrencyToggle=document.getElementById("hideCurrencyToggle");
+
+    hideCurrencyToggle.checked=localStorage.getItem("hideCurrency")==="true";
+    document.body.classList.toggle("no-currency", hideCurrencyToggle.checked);
+
+    hideCurrencyToggle.addEventListener("change", ()=>{
+        localStorage.setItem("hideCurrency", hideCurrencyToggle.checked);
+        document.body.classList.toggle("no-currency", hideCurrencyToggle.checked);
+    });
+
+    document.getElementById("valueModalInput").addEventListener("keydown", ev=>{
+        if(ev.key==="Enter") saveValueEditor();
+    });
+
     renderHistory();
+}
+
+/* ========= VISIBLE CURRENCIES ========= */
+
+function getVisibleCurrencies() {
+    const codes=JSON.parse(localStorage.getItem("visibleCurrencies") || "null");
+    return codes ? CURRENCIES.filter(c=>codes.includes(c.code)) : CURRENCIES;
+}
+
+/* fills a dropdown with the visible currencies; keepSelected adds `selected` even when hidden */
+function fillCurrencySelect(select, selected, keepSelected) {
+
+    select.innerHTML="";
+
+    const list=getVisibleCurrencies().slice();
+
+    if(keepSelected && !list.some(c=>c.code===selected)) {
+        list.unshift(CURRENCIES.find(c=>c.code===selected));
+    }
+
+    list.forEach(c=>{
+        const o=document.createElement("option");
+        o.text=c.label;
+        o.value=c.code;
+        select.appendChild(o);
+    });
+
+    if(list.some(c=>c.code===selected)) select.value=selected;
+}
+
+function openCurrencyConfig() {
+
+    const listEl=document.getElementById("currencyModalList");
+    listEl.innerHTML="";
+
+    const visible=getVisibleCurrencies().map(c=>c.code);
+
+    CURRENCIES.forEach(c=>{
+
+        const label=document.createElement("label");
+        label.className="toggle";
+
+        const box=document.createElement("input");
+        box.type="checkbox";
+        box.value=c.code;
+        box.checked=visible.includes(c.code);
+
+        box.onchange=()=>{
+
+            const checked=[...listEl.querySelectorAll("input:checked")].map(b=>b.value);
+
+            /* at least one currency must stay visible */
+            if(!checked.length) {
+                box.checked=true;
+                return;
+            }
+
+            localStorage.setItem("visibleCurrencies", JSON.stringify(checked));
+
+            const currencySelect=document.getElementById("currencySelect");
+            fillCurrencySelect(currencySelect, currencySelect.value);
+            localStorage.setItem("lastCurrency", currencySelect.value);
+        };
+
+        label.appendChild(box);
+        label.appendChild(document.createTextNode(c.label));
+
+        listEl.appendChild(label);
+    });
+
+    document.getElementById("currencyModal").classList.remove("hidden");
+}
+
+function closeCurrencyConfig() {
+    document.getElementById("currencyModal").classList.add("hidden");
 }
 
 /* ========= EXTRA FIELDS ========= */
@@ -332,8 +523,10 @@ function buildNotes(typeName, notes) {
 
     const type=getType(typeName);
 
-    const parts=(type.fields || [])
-        .map(f=>document.getElementById("extra-"+f.id).value.trim());
+    const parts=(type.fields || []).map(f=>{
+        const v=document.getElementById("extra-"+f.id).value.trim();
+        return v && f.format ? f.format(v) : v;
+    });
 
     if(type.fields) return parts.some(p=>p) ? parts.join(" - ") : "";
 
@@ -351,7 +544,7 @@ function formatCurrency(value, currencyCode) {
         return new Intl.NumberFormat(c.locale, {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2
-        }).format(value)+" (other)";
+        }).format(value);
     }
 
     return new Intl.NumberFormat(c.locale, {
@@ -362,6 +555,14 @@ function formatCurrency(value, currencyCode) {
 }
 
 /* ========= DATE ========= */
+
+/* "2026-10-30" -> "October 30" */
+function formatDay(day) {
+    return new Date(day+"T00:00").toLocaleDateString("en-US", {
+        month: "long",
+        day: "numeric"
+    });
+}
 
 function getLocalDateTime() {
 
@@ -377,6 +578,15 @@ function getLocalDateTime() {
 
 /* ========= ADD ========= */
 
+function isValidValue(text) {
+    return text.trim()!=="" && !isNaN(parseValue(text));
+}
+
+function updateAddButton() {
+    document.getElementById("addButton").disabled=
+        !isValidValue(document.getElementById("valueInput").value);
+}
+
 function addEntry() {
 
     const type=document.getElementById("typeSelect").value;
@@ -384,7 +594,7 @@ function addEntry() {
     const currency=document.getElementById("currencySelect").value;
     const notes=buildNotes(type, document.getElementById("notesInput").value);
 
-    if(!value || isNaN(parseValue(value))) return;
+    if(!isValidValue(value)) return;
 
     const {day}=getLocalDateTime();
 
@@ -404,6 +614,7 @@ function addEntry() {
     document.getElementById("notesInput").value="";
     localStorage.setItem("draft", JSON.stringify({type}));
     renderExtraFields();
+    updateAddButton();
 
     renderHistory();
 }
@@ -452,6 +663,55 @@ function saveField(index, field, value) {
     saveData(data);
 }
 
+/* ========= VALUE EDITOR ========= */
+
+let editingIndex=null;
+
+function openValueEditor(index) {
+
+    const e=loadData()[index];
+
+    editingIndex=index;
+
+    document.getElementById("valueModalLabel").textContent=e.type;
+
+    const input=document.getElementById("valueModalInput");
+    input.value=e.value;
+
+    /* keep the entry's own currency selectable even if it is hidden */
+    fillCurrencySelect(document.getElementById("valueModalCurrency"), e.currency, true);
+
+    document.getElementById("valueModal").classList.remove("hidden");
+
+    /* must happen inside the tap for iOS to open the keyboard */
+    input.focus();
+    input.select();
+}
+
+function closeValueEditor() {
+    editingIndex=null;
+    document.getElementById("valueModal").classList.add("hidden");
+}
+
+function saveValueEditor() {
+
+    const value=parseValue(document.getElementById("valueModalInput").value);
+
+    if(!isNaN(value)) {
+
+        const data=loadData();
+
+        data[editingIndex].value=value;
+        data[editingIndex].currency=document.getElementById("valueModalCurrency").value;
+
+        saveData(data);
+
+        renderHistory();
+    }
+
+    closeValueEditor();
+}
+
 /* ========= RENDER ========= */
 
 function renderHistory() {
@@ -471,14 +731,12 @@ function renderHistory() {
     Object.keys(days).sort().forEach(day=>{
 
         const details=document.createElement("details");
-        details.open=true;
+        rememberFold(details, "day-"+day, true);
 
         const summary=document.createElement("summary");
-        summary.textContent=day;
+        summary.textContent=formatDay(day);
 
         details.appendChild(summary);
-
-        const table=document.createElement("table");
 
         const totals={};
 
@@ -489,13 +747,15 @@ function renderHistory() {
             if(!totals[e.currency]) totals[e.currency]=0;
             totals[e.currency]+=e.value;
 
-            const tr=document.createElement("tr");
+            const entry=document.createElement("div");
+            entry.className="entry";
+
+            const row=document.createElement("div");
+            row.className="entry-row";
 
             /* TYPE */
-            const tdType=document.createElement("td");
-            tdType.className="col-type";
-
             const typeSelect=document.createElement("select");
+            typeSelect.className="entry-type";
 
             /* keep legacy types (e.g. "Meal") visible on old entries */
             const typeNames=TYPES.map(t=>t.name);
@@ -512,50 +772,22 @@ function renderHistory() {
             typeSelect.onchange=(ev)=>
                 updateEntry(obj.index,"type",ev.target.value);
 
-            tdType.appendChild(typeSelect);
-
             /* VALUE */
-            const tdValue=document.createElement("td");
-            tdValue.className="col-value";
+            const valueBtn=document.createElement("button");
+            valueBtn.className="entry-value";
+            valueBtn.textContent=formatCurrency(e.value,e.currency);
 
-            const valueInput=document.createElement("input");
-            valueInput.type="text";
-            valueInput.inputMode="decimal";
-            valueInput.value=e.value;
+            valueBtn.onclick=()=>openValueEditor(obj.index);
 
-            valueInput.oninput=(ev)=>{
-                if(!isNaN(parseValue(ev.target.value)))
-                    saveField(obj.index,"value",parseValue(ev.target.value));
-            };
+            /* DELETE */
+            const delBtn=document.createElement("button");
+            delBtn.textContent="✕";
+            delBtn.className="delete-btn";
+            delBtn.setAttribute("aria-label","Delete");
 
-            valueInput.onchange=(ev)=>
-                updateEntry(obj.index,"value",ev.target.value);
-
-            tdValue.appendChild(valueInput);
-
-            /* CURRENCY */
-            const tdCurrency=document.createElement("td");
-            tdCurrency.className="col-currency";
-
-            const currencySelect=document.createElement("select");
-
-            CURRENCIES.forEach(c=>{
-                const o=document.createElement("option");
-                o.value=c.code;
-                o.text=currencyFlag(c);
-                if(c.code===e.currency) o.selected=true;
-                currencySelect.appendChild(o);
-            });
-
-            currencySelect.onchange=(ev)=>
-                updateEntry(obj.index,"currency",ev.target.value);
-
-            tdCurrency.appendChild(currencySelect);
+            delBtn.onclick=()=>deleteEntry(obj.index);
 
             /* NOTES */
-            const tdNotes=document.createElement("td");
-            tdNotes.colSpan=4;
-
             const notesInput=document.createElement("input");
             notesInput.value=e.notes;
             notesInput.placeholder="Notes";
@@ -566,42 +798,22 @@ function renderHistory() {
             notesInput.onchange=(ev)=>
                 updateEntry(obj.index,"notes",ev.target.value);
 
-            tdNotes.appendChild(notesInput);
+            row.appendChild(typeSelect);
+            row.appendChild(valueBtn);
+            row.appendChild(delBtn);
 
-            /* DELETE */
-            const tdDelete=document.createElement("td");
-            tdDelete.className="col-delete";
+            /* notes go on their own line so the main row has room */
+            entry.appendChild(row);
+            entry.appendChild(notesInput);
 
-            const delBtn=document.createElement("button");
-            delBtn.textContent="✕";
-            delBtn.className="delete-btn";
-            delBtn.setAttribute("aria-label","Delete");
-
-            delBtn.onclick=()=>deleteEntry(obj.index);
-
-            tdDelete.appendChild(delBtn);
-
-            tr.appendChild(tdType);
-            tr.appendChild(tdValue);
-            tr.appendChild(tdCurrency);
-            tr.appendChild(tdDelete);
-
-            /* notes go on their own row so the main row has room */
-            const notesRow=document.createElement("tr");
-            notesRow.className="notes-row";
-            notesRow.appendChild(tdNotes);
-
-            table.appendChild(tr);
-            table.appendChild(notesRow);
+            details.appendChild(entry);
 
         });
 
         /* DAY TOTAL */
 
-        const totalRow=document.createElement("tr");
-        const tdTotal=document.createElement("td");
-        tdTotal.colSpan=4;
-        tdTotal.className="day-total";
+        const dayTotal=document.createElement("div");
+        dayTotal.className="day-total";
 
         let txt="Total: ";
 
@@ -609,13 +821,10 @@ function renderHistory() {
             txt+=formatCurrency(totals[c],c)+"  ";
         });
 
-        tdTotal.textContent=txt;
+        dayTotal.textContent=txt;
 
-        totalRow.appendChild(tdTotal);
+        details.appendChild(dayTotal);
 
-        table.appendChild(totalRow);
-
-        details.appendChild(table);
 
         history.appendChild(details);
 
@@ -631,7 +840,7 @@ function renderTotals(data) {
     const history=document.getElementById("history");
 
     const details=document.createElement("details");
-    details.open=false;
+    rememberFold(details, "total", false);
 
     const summary=document.createElement("summary");
     summary.textContent="Total Spent";
@@ -706,16 +915,6 @@ function clearAll() {
 
         renderHistory();
     }
-}
-
-/* ========= ADVANCED ========= */
-
-function toggleAdvanced() {
-
-    document
-        .getElementById("advancedMenu")
-        .classList.toggle("hidden");
-
 }
 
 /* ========= START ========= */
