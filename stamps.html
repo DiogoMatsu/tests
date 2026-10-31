@@ -250,6 +250,21 @@
 <body>
 <div class="container">
 
+  <select onchange="switchTab(this.value)">
+    <option value="stamps">Stamp Calculator</option>
+    <option value="compare">Compare Items</option>
+  </select>
+
+  <div id="compareTab" style="display:none">
+    <div class="card">
+      <select id="typeSelect" onchange="renderCompareUI()"></select>
+    </div>
+
+    <div class="card" id="compareForm"></div>
+    <div class="card" id="compareList"></div>
+  </div>
+
+
   <div class="card">
     <div class="menu">
       <select id="menuSelect" onchange="handleMenu(this.value)">
@@ -348,10 +363,13 @@
 
 <script>
   const STORAGE_ITEMS = "stamp_items";
+  const COMPARISONS = "comparisons";
   const STORAGE_THRESHOLD = "stamp_threshold";
 
   let input = "";
   let items = JSON.parse(localStorage.getItem(STORAGE_ITEMS) || "[]");
+  let comparisons = JSON.parse(localStorage.getItem(COMPARISONS) || "{}");
+
   let threshold = parseFloat(localStorage.getItem(STORAGE_THRESHOLD)) || 25;
   // let lastProgress = 0;
   let lastStampCount = null;
@@ -364,6 +382,11 @@
   function save() {
     localStorage.setItem(STORAGE_ITEMS, JSON.stringify(items));
     localStorage.setItem(STORAGE_THRESHOLD, threshold);
+  }
+
+  function switchTab(tab) {
+    document.getElementById("compareTab").style.display =
+            tab === "compare" ? "block" : "none";
   }
 
   function updateDisplay() {
@@ -694,6 +717,125 @@
     }
     lastStampCount = stamps;
   }
+
+  //--- Tab Prices
+  const PRODUCT_TYPES = {
+    drinks: {
+      label: "Drinks",
+      unitLabel: "R$ / liter",
+
+      fields: [
+        { key: "name", label: "Name", type: "text" },
+        { key: "cost", label: "Cost", type: "number" },
+        { key: "ml", label: "ml per unit", type: "number" },
+        { key: "amount", label: "Units", type: "number" }
+      ],
+
+      calculate(product) {
+        const totalMl = product.ml * product.amount;
+        const liters = totalMl / 1000;
+        return product.cost / liters;
+      }
+    },
+
+    toiletPaper: {
+      label: "Toilet Paper",
+      unitLabel: "R$ / km",
+
+      fields: [
+        { key: "name", label: "Name", type: "text" },
+        { key: "cost", label: "Cost", type: "number" },
+        { key: "meters", label: "Meters per roll", type: "number" },
+        { key: "amount", label: "Rolls", type: "number" },
+        { key: "faces", label: "Faces", type: "number" }
+      ],
+
+      calculate(product) {
+        const totalMeters =
+                product.meters * product.amount * product.faces;
+        const km = totalMeters / 1000;
+        return product.cost / km;
+      }
+    }
+  };
+
+  function renderCompareUI() {
+    const type = document.getElementById("typeSelect").value;
+    const def = PRODUCT_TYPES[type];
+    const form = document.getElementById("compareForm");
+
+    form.innerHTML = def.fields.map(f => `
+    <input
+      type="${f.type}"
+      placeholder="${f.label}"
+      id="field_${f.key}"
+    />
+  `).join("");
+
+    form.innerHTML += `
+    <button onclick="addProduct('${type}')">Add</button>
+  `;
+
+    renderCompareList(type);
+  }
+
+  const typeSelect = document.getElementById("typeSelect");
+  Object.entries(PRODUCT_TYPES).forEach(([key, def]) => {
+    const opt = document.createElement("option");
+    opt.value = key;
+    opt.textContent = def.label;
+    typeSelect.appendChild(opt);
+  });
+
+  function addProduct(type) {
+    const def = PRODUCT_TYPES[type];
+    const product = {};
+
+    def.fields.forEach(f => {
+      const el = document.getElementById(`field_${f.key}`);
+      product[f.key] = f.type === "number"
+              ? parseFloat(el.value)
+              : el.value;
+      el.value = "";
+    });
+
+    comparisons[type] ??= [];
+    comparisons[type].push(product);
+
+    localStorage.setItem("comparisons", JSON.stringify(comparisons));
+    renderCompareList(type);
+  }
+  function renderCompareList(type) {
+    const def = PRODUCT_TYPES[type];
+    const list = document.getElementById("compareList");
+    const items = comparisons[type] || [];
+
+    if (!items.length) {
+      list.innerHTML = "<em>No items yet</em>";
+      return;
+    }
+
+    const results = items.map(p => ({
+      ...p,
+      value: def.calculate(p)
+    }));
+
+    const best = Math.min(...results.map(r => r.value));
+
+    list.innerHTML = results.map(r => `
+    <div class="item">
+      <span>
+        ${r.name} —
+        <strong class="${r.value === best ? "highlight" : ""}">
+          ${r.value.toFixed(2)} ${def.unitLabel}
+        </strong>
+      </span>
+    </div>
+  `).join("");
+  }
+
+
+  //---
 
   updateDisplay();
   render();

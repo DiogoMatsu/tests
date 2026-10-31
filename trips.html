@@ -9,6 +9,7 @@
 body {
     font-family: system-ui, sans-serif;
     margin: 0;
+    padding-bottom: 70px; /* room for the fixed Advanced Options bar */
     background: #f2f2f2;
 }
 
@@ -44,6 +45,16 @@ button {
     border-radius: 6px;
 }
 
+.advanced {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 6px 10px;
+    background: #f2f2f2;
+    border-top: 1px solid #ddd;
+}
+
 .history {
     height: 45vh;
     overflow-y: auto;
@@ -55,12 +66,27 @@ button {
 table {
     width: 100%;
     border-collapse: collapse;
+    table-layout: fixed;
 }
 
 td, th {
-    padding: 6px;
-    border-bottom: 1px solid #ddd;
+    padding: 2px;
     text-align: left;
+}
+
+table input, table select, table button {
+    padding: 6px 4px;
+    margin: 2px 0;
+}
+
+/* type takes the remaining space; the other columns stay fixed */
+.col-value { width: 72px; }
+.col-currency { width: 60px; }
+.col-delete { width: 40px; }
+
+.notes-row td {
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 6px;
 }
 
 .day-total {
@@ -77,6 +103,12 @@ td, th {
 
 .delete-btn {
     background: #ff3b30;
+    font-weight: bold;
+}
+
+.extra-fields {
+    display: flex;
+    gap: 6px;
 }
 
 </style>
@@ -90,8 +122,10 @@ td, th {
 
 <select id="typeSelect"></select>
 
+<div id="extraFields" class="extra-fields"></div>
+
 <div style="display:flex; gap:6px;">
-<input id="valueInput" type="number" placeholder="Value">
+<input id="valueInput" type="text" inputmode="decimal" placeholder="Value">
 <select id="currencySelect"></select>
 </div>
 
@@ -103,7 +137,9 @@ td, th {
 
 <div class="history" id="history"></div>
 
-<hr>
+</div>
+
+<div class="advanced">
 
 <button onclick="toggleAdvanced()">Advanced Options</button>
 
@@ -122,29 +158,77 @@ td, th {
 
 /* ========= CONFIG ========= */
 
+/* fields: extra inputs shown for the type; their values are joined with " - " into notes */
 const TYPES = [
-    {name:"Uber", color:"#ffd166"},
-    {name:"Meal", color:"#ef476f"},
+    {name:"Transport", color:"#ffd166", fields:[{id:"from", label:"From"}, {id:"to", label:"To"}]},
+    {name:"Breakfast", color:"#f78c6b"},
+    {name:"Lunch", color:"#ef476f"},
+    {name:"Coffee Break", color:"#a0522d"},
+    {name:"Dinner", color:"#c9184a"},
+    {name:"Shopping", color:"#83c5be"},
     {name:"Gift", color:"#06d6a0"},
-    {name:"Hotel", color:"#118ab2"},
-    {name:"Flight", color:"#9b5de5"}
+    {name:"Hotel", color:"#118ab2", fields:[{id:"name", label:"Name"}, {id:"days", label:"Days", inputmode:"numeric"}]},
+    {name:"Flight", color:"#9b5de5", fields:[{id:"from", label:"From"}, {id:"to", label:"To"}]},
+    {name:"Other", color:"#adb5bd"}
 ];
+
+/* old type names mapped to their replacements */
+const RENAMED_TYPES = {Uber:"Transport"};
 
 const CURRENCIES = [
     {code:"brl", label:"🇧🇷 Real", locale:"pt-BR"},
     {code:"usd", label:"🇺🇸 Dollar", locale:"en-US"},
     {code:"eur", label:"🇪🇺 Euro", locale:"de-DE"},
-    {code:"jpy", label:"🇯🇵 Yen", locale:"ja-JP"}
+    {code:"jpy", label:"🇯🇵 Yen", locale:"ja-JP"},
+    {code:"other", label:"🌐 Other", locale:"en-US"}
 ];
+
+/* flag only, used in the entries list */
+function currencyFlag(c) {
+    return c.label.split(" ")[0];
+}
 
 /* ========= STORAGE ========= */
 
 function loadData() {
-    return JSON.parse(localStorage.getItem("spendings") || "[]");
+    const data=JSON.parse(localStorage.getItem("spendings") || "[]");
+
+    data.forEach(e=>{
+        if(RENAMED_TYPES[e.type]) e.type=RENAMED_TYPES[e.type];
+    });
+
+    return data;
+}
+
+/* accepts "12,50" as well as "12.50" */
+function parseValue(text) {
+    return Number(String(text).replace(",", "."));
 }
 
 function saveData(data) {
     localStorage.setItem("spendings", JSON.stringify(data));
+}
+
+/* unsaved form input, kept across reloads */
+function loadDraft() {
+    return JSON.parse(localStorage.getItem("draft") || "{}");
+}
+
+function saveDraft() {
+
+    const draft={
+        type: document.getElementById("typeSelect").value,
+        value: document.getElementById("valueInput").value,
+        notes: document.getElementById("notesInput").value,
+        /* keyed by field id, so From/To carry over between Transport and Flight */
+        extra: loadDraft().extra || {}
+    };
+
+    document.querySelectorAll("#extraFields input").forEach(input=>{
+        draft.extra[input.dataset.field]=input.value;
+    });
+
+    localStorage.setItem("draft", JSON.stringify(draft));
 }
 
 /* ========= TITLE ========= */
@@ -176,6 +260,21 @@ function init() {
         typeSelect.appendChild(o);
     });
 
+    const draft=loadDraft();
+
+    if(getType(draft.type)) typeSelect.value=draft.type;
+    document.getElementById("valueInput").value=draft.value || "";
+    document.getElementById("notesInput").value=draft.notes || "";
+
+    typeSelect.addEventListener("change", ()=>{
+        renderExtraFields();
+        saveDraft();
+    });
+    renderExtraFields();
+
+    ["valueInput","notesInput","extraFields"].forEach(id=>
+        document.getElementById(id).addEventListener("input", saveDraft));
+
     const currencySelect=document.getElementById("currencySelect");
 
     const lastCurrency = localStorage.getItem("lastCurrency");
@@ -198,11 +297,62 @@ function init() {
     renderHistory();
 }
 
+/* ========= EXTRA FIELDS ========= */
+
+function getType(name) {
+    return TYPES.find(t=>t.name===name);
+}
+
+function renderExtraFields() {
+
+    const container=document.getElementById("extraFields");
+    container.innerHTML="";
+
+    const type=getType(document.getElementById("typeSelect").value);
+
+    const extra=loadDraft().extra || {};
+
+    (type.fields || []).forEach(f=>{
+        const input=document.createElement("input");
+        input.id="extra-"+f.id;
+        input.dataset.field=f.id;
+        input.value=extra[f.id] || "";
+        input.placeholder=f.label;
+        if(f.inputmode) input.inputMode=f.inputmode;
+        container.appendChild(input);
+    });
+
+    /* types with their own fields don't need free notes */
+    document.getElementById("notesInput")
+        .classList.toggle("hidden", !!type.fields);
+}
+
+/* builds "{field1} - {field2}" from the extra fields, followed by any free notes */
+function buildNotes(typeName, notes) {
+
+    const type=getType(typeName);
+
+    const parts=(type.fields || [])
+        .map(f=>document.getElementById("extra-"+f.id).value.trim());
+
+    if(type.fields) return parts.some(p=>p) ? parts.join(" - ") : "";
+
+    return notes.trim();
+}
+
 /* ========= FORMAT ========= */
 
 function formatCurrency(value, currencyCode) {
 
     const c = CURRENCIES.find(x=>x.code===currencyCode);
+
+    /* "other" is not a real ISO currency code, so show a plain number */
+    if(currencyCode==="other") {
+        return new Intl.NumberFormat(c.locale, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(value)+" (other)";
+    }
 
     return new Intl.NumberFormat(c.locale, {
         style: "currency",
@@ -217,8 +367,11 @@ function getLocalDateTime() {
 
     const d=new Date();
 
+    /* toISOString is UTC, which jumps to the next day in the evening for negative offsets */
+    const pad=n=>String(n).padStart(2,"0");
+
     return {
-        day: d.toISOString().slice(0,10)
+        day: `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
     };
 }
 
@@ -229,9 +382,9 @@ function addEntry() {
     const type=document.getElementById("typeSelect").value;
     const value=document.getElementById("valueInput").value;
     const currency=document.getElementById("currencySelect").value;
-    const notes=document.getElementById("notesInput").value;
+    const notes=buildNotes(type, document.getElementById("notesInput").value);
 
-    if(!value) return;
+    if(!value || isNaN(parseValue(value))) return;
 
     const {day}=getLocalDateTime();
 
@@ -239,7 +392,7 @@ function addEntry() {
 
     data.push({
         type,
-        value:Number(value),
+        value:parseValue(value),
         currency,
         notes,
         day
@@ -249,6 +402,8 @@ function addEntry() {
 
     document.getElementById("valueInput").value="";
     document.getElementById("notesInput").value="";
+    localStorage.setItem("draft", JSON.stringify({type}));
+    renderExtraFields();
 
     renderHistory();
 }
@@ -276,7 +431,8 @@ function updateEntry(index, field, value) {
     const data=loadData();
 
     if(field==="value") {
-        data[index][field]=Number(value);
+        if(isNaN(parseValue(value))) return renderHistory();
+        data[index][field]=parseValue(value);
     } else {
         data[index][field]=value;
     }
@@ -284,6 +440,16 @@ function updateEntry(index, field, value) {
     saveData(data);
 
     renderHistory();
+}
+
+/* saves without re-rendering, so the field keeps focus while typing */
+function saveField(index, field, value) {
+
+    const data=loadData();
+
+    data[index][field]=value;
+
+    saveData(data);
 }
 
 /* ========= RENDER ========= */
@@ -308,7 +474,7 @@ function renderHistory() {
         details.open=true;
 
         const summary=document.createElement("summary");
-        summary.textContent="> "+day;
+        summary.textContent=day;
 
         details.appendChild(summary);
 
@@ -327,14 +493,19 @@ function renderHistory() {
 
             /* TYPE */
             const tdType=document.createElement("td");
+            tdType.className="col-type";
 
             const typeSelect=document.createElement("select");
 
-            TYPES.forEach(t=>{
+            /* keep legacy types (e.g. "Meal") visible on old entries */
+            const typeNames=TYPES.map(t=>t.name);
+            if(!typeNames.includes(e.type)) typeNames.unshift(e.type);
+
+            typeNames.forEach(name=>{
                 const o=document.createElement("option");
-                o.value=t.name;
-                o.text=t.name;
-                if(t.name===e.type) o.selected=true;
+                o.value=name;
+                o.text=name;
+                if(name===e.type) o.selected=true;
                 typeSelect.appendChild(o);
             });
 
@@ -345,10 +516,17 @@ function renderHistory() {
 
             /* VALUE */
             const tdValue=document.createElement("td");
+            tdValue.className="col-value";
 
             const valueInput=document.createElement("input");
-            valueInput.type="number";
+            valueInput.type="text";
+            valueInput.inputMode="decimal";
             valueInput.value=e.value;
+
+            valueInput.oninput=(ev)=>{
+                if(!isNaN(parseValue(ev.target.value)))
+                    saveField(obj.index,"value",parseValue(ev.target.value));
+            };
 
             valueInput.onchange=(ev)=>
                 updateEntry(obj.index,"value",ev.target.value);
@@ -357,13 +535,14 @@ function renderHistory() {
 
             /* CURRENCY */
             const tdCurrency=document.createElement("td");
+            tdCurrency.className="col-currency";
 
             const currencySelect=document.createElement("select");
 
             CURRENCIES.forEach(c=>{
                 const o=document.createElement("option");
                 o.value=c.code;
-                o.text=c.label;
+                o.text=currencyFlag(c);
                 if(c.code===e.currency) o.selected=true;
                 currencySelect.appendChild(o);
             });
@@ -375,9 +554,14 @@ function renderHistory() {
 
             /* NOTES */
             const tdNotes=document.createElement("td");
+            tdNotes.colSpan=4;
 
             const notesInput=document.createElement("input");
             notesInput.value=e.notes;
+            notesInput.placeholder="Notes";
+
+            notesInput.oninput=(ev)=>
+                saveField(obj.index,"notes",ev.target.value);
 
             notesInput.onchange=(ev)=>
                 updateEntry(obj.index,"notes",ev.target.value);
@@ -386,10 +570,12 @@ function renderHistory() {
 
             /* DELETE */
             const tdDelete=document.createElement("td");
+            tdDelete.className="col-delete";
 
             const delBtn=document.createElement("button");
-            delBtn.textContent="Delete";
+            delBtn.textContent="✕";
             delBtn.className="delete-btn";
+            delBtn.setAttribute("aria-label","Delete");
 
             delBtn.onclick=()=>deleteEntry(obj.index);
 
@@ -398,10 +584,15 @@ function renderHistory() {
             tr.appendChild(tdType);
             tr.appendChild(tdValue);
             tr.appendChild(tdCurrency);
-            tr.appendChild(tdNotes);
             tr.appendChild(tdDelete);
 
+            /* notes go on their own row so the main row has room */
+            const notesRow=document.createElement("tr");
+            notesRow.className="notes-row";
+            notesRow.appendChild(tdNotes);
+
             table.appendChild(tr);
+            table.appendChild(notesRow);
 
         });
 
@@ -409,7 +600,7 @@ function renderHistory() {
 
         const totalRow=document.createElement("tr");
         const tdTotal=document.createElement("td");
-        tdTotal.colSpan=5;
+        tdTotal.colSpan=4;
         tdTotal.className="day-total";
 
         let txt="Total: ";
@@ -443,7 +634,7 @@ function renderTotals(data) {
     details.open=false;
 
     const summary=document.createElement("summary");
-    summary.textContent="> Total Spent";
+    summary.textContent="Total Spent";
 
     details.appendChild(summary);
 
