@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Stamp Calculator</title>
 
   <style>
@@ -14,6 +14,10 @@
       --accent: #4da3ff;
       --border: #2a2a35;
       --danger: #ff5c5c;
+    }
+
+    html, body, button, input, select {
+      touch-action: manipulation; /* prevent double-tap zoom */
     }
 
     body {
@@ -141,11 +145,6 @@
       margin-bottom: 8px;
     }
 
-    .highlight {
-      color: var(--accent);
-      font-weight: 600;
-    }
-
     .summary-row {
       display: flex;
       justify-content: space-between;
@@ -250,21 +249,6 @@
 <body>
 <div class="container">
 
-  <select onchange="switchTab(this.value)">
-    <option value="stamps">Stamp Calculator</option>
-    <option value="compare">Compare Items</option>
-  </select>
-
-  <div id="compareTab" style="display:none">
-    <div class="card">
-      <select id="typeSelect" onchange="renderCompareUI()"></select>
-    </div>
-
-    <div class="card" id="compareForm"></div>
-    <div class="card" id="compareList"></div>
-  </div>
-
-
   <div class="card">
     <div class="menu">
       <select id="menuSelect" onchange="handleMenu(this.value)">
@@ -310,7 +294,7 @@
       <button onclick="addDigit('2')">2</button>
       <button onclick="addDigit('3')">3</button>
 
-      <button onclick="addDigit('.')">.</button>
+      <button onclick="addDigit('00')">00</button>
       <button onclick="addDigit('0')">0</button>
       <button onclick="backspace()">⌫</button>
 
@@ -328,20 +312,18 @@
     <div style="display:flex; gap:8px; margin-top:8px;">
       <input
               id="weight"
-              type="number"
+              type="text"
               inputmode="decimal"
               placeholder="g"
-              step="0.001"
-              oninput="updateWeightPreview()"
+              oninput="sanitizeDecimal(this); updateWeightPreview()"
               style="flex:1;"
       />
       <input
               id="pricePerKg"
-              type="number"
+              type="text"
               inputmode="decimal"
               placeholder="R$/kg"
-              step="0.01"
-              oninput="updateWeightPreview()"
+              oninput="sanitizeDecimal(this); updateWeightPreview()"
               style="flex:1;"
       />
       <button onclick="addByWeight()">Add</button>
@@ -363,12 +345,10 @@
 
 <script>
   const STORAGE_ITEMS = "stamp_items";
-  const COMPARISONS = "comparisons";
   const STORAGE_THRESHOLD = "stamp_threshold";
 
   let input = "";
   let items = JSON.parse(localStorage.getItem(STORAGE_ITEMS) || "[]");
-  let comparisons = JSON.parse(localStorage.getItem(COMPARISONS) || "{}");
 
   let threshold = parseFloat(localStorage.getItem(STORAGE_THRESHOLD)) || 25;
   // let lastProgress = 0;
@@ -384,13 +364,15 @@
     localStorage.setItem(STORAGE_THRESHOLD, threshold);
   }
 
-  function switchTab(tab) {
-    document.getElementById("compareTab").style.display =
-            tab === "compare" ? "block" : "none";
+  // `input` holds raw digits interpreted as cents: "105" -> 1.05
+  const MAX_DIGITS = 5; // up to 999.99
+
+  function inputValue() {
+    return input ? Number(input) / 100 : 0;
   }
 
   function updateDisplay() {
-    const text = input || "0";
+    const text = inputValue().toFixed(2);
     const span = document.getElementById("displayText");
 
     span.textContent = text;
@@ -408,47 +390,16 @@
     return "R$" + value.toFixed(2);
   }
 
-  /**
-   * Validate a new digit before adding.
-   * Returns true if valid, false if invalid.
-   * @param d
-   */
-  function isValidNewDigit(d)
-  {
-    // Only allow digits or "."
-    if (!/^[0-9.]$/.test(d)) return false;
-
-    // Prevent multiple dots
-    if (d === "." && input.includes(".")) return false;
-
-    let next = input + d;
-
-    // Split integer / decimal parts
-    const [intPart, decPart = ""] = next.split(".");
-
-    // Limit integer part to 3 digits (max 999)
-    if (intPart.length > 3) return false;
-    if (Number(intPart) > 999) return false;
-
-    // Limit decimal part to 2 digits
-    if (decPart.length > 2) return false;
-    return true;
-  }
-
   function addDigit(d) {
-    if (input === "" && d === ".") {
-      input = "0.";
-      updateDisplay();
+    let next = (input + d).replace(/^0+/, ""); // drop leading zeros
+
+    if (next.length > MAX_DIGITS) {
+      rejectInput();
       return;
     }
 
-    if (isValidNewDigit(d)) {
-      input += d;
-      updateDisplay();
-    }
-    else {
-      rejectInput();
-    }
+    input = next;
+    updateDisplay();
   }
 
   function rejectInput() {
@@ -473,8 +424,12 @@
     updateDisplay();
   }
 
+  // Typed digits are treated as whole reais: "10" + ".98" -> 10.98
   function quickAdd(suffix) {
-    if (!input) return;
+    if (!input || input.length > 3) {
+      rejectInput();
+      return;
+    }
     const value = parseFloat(input + suffix);
     if (!isNaN(value)) {
       addItem(value);
@@ -482,9 +437,24 @@
   }
 
 
+  // Accept both "," and "." as the decimal separator
+  function parseDecimal(str) {
+    return parseFloat(String(str).replace(",", "."));
+  }
+
+  // Keep only digits and a single separator
+  function sanitizeDecimal(el) {
+    let v = el.value.replace(/[^0-9.,]/g, "");
+    const i = v.search(/[.,]/);
+    if (i !== -1) {
+      v = v.slice(0, i + 1) + v.slice(i + 1).replace(/[.,]/g, "");
+    }
+    if (v !== el.value) el.value = v;
+  }
+
   function getCurrentWeightItem() {
-    let w = parseFloat(document.getElementById("weight").value);
-    const p = parseFloat(document.getElementById("pricePerKg").value);
+    let w = parseDecimal(document.getElementById("weight").value);
+    const p = parseDecimal(document.getElementById("pricePerKg").value);
     if (isNaN(w) || isNaN(p) || w <= 0 || p <= 0) return null;
 
     w /= 1000; // convert to grams
@@ -515,7 +485,7 @@
   function addItem(value) {
     if (value === undefined) {
       if (!input) return;
-      value = parseFloat(input)
+      value = inputValue();
     }
 
     items.push(value);
@@ -538,7 +508,7 @@
     }
     else if (value === "custom") {
       const newValue = prompt("Edit price:", threshold.toFixed(2));
-      threshold = parseFloat(newValue);
+      threshold = parseDecimal(newValue) || threshold;
       save();
       render();
     }
@@ -685,7 +655,7 @@
       label.onclick = () => {
         const v = prompt("Edit price:", price.toFixed(2));
         if (v !== null) {
-          const n = parseFloat(v);
+          const n = parseDecimal(v);
           if (!isNaN(n)) {
             items[i] = n;
             save();
@@ -717,125 +687,6 @@
     }
     lastStampCount = stamps;
   }
-
-  //--- Tab Prices
-  const PRODUCT_TYPES = {
-    drinks: {
-      label: "Drinks",
-      unitLabel: "R$ / liter",
-
-      fields: [
-        { key: "name", label: "Name", type: "text" },
-        { key: "cost", label: "Cost", type: "number" },
-        { key: "ml", label: "ml per unit", type: "number" },
-        { key: "amount", label: "Units", type: "number" }
-      ],
-
-      calculate(product) {
-        const totalMl = product.ml * product.amount;
-        const liters = totalMl / 1000;
-        return product.cost / liters;
-      }
-    },
-
-    toiletPaper: {
-      label: "Toilet Paper",
-      unitLabel: "R$ / km",
-
-      fields: [
-        { key: "name", label: "Name", type: "text" },
-        { key: "cost", label: "Cost", type: "number" },
-        { key: "meters", label: "Meters per roll", type: "number" },
-        { key: "amount", label: "Rolls", type: "number" },
-        { key: "faces", label: "Faces", type: "number" }
-      ],
-
-      calculate(product) {
-        const totalMeters =
-                product.meters * product.amount * product.faces;
-        const km = totalMeters / 1000;
-        return product.cost / km;
-      }
-    }
-  };
-
-  function renderCompareUI() {
-    const type = document.getElementById("typeSelect").value;
-    const def = PRODUCT_TYPES[type];
-    const form = document.getElementById("compareForm");
-
-    form.innerHTML = def.fields.map(f => `
-    <input
-      type="${f.type}"
-      placeholder="${f.label}"
-      id="field_${f.key}"
-    />
-  `).join("");
-
-    form.innerHTML += `
-    <button onclick="addProduct('${type}')">Add</button>
-  `;
-
-    renderCompareList(type);
-  }
-
-  const typeSelect = document.getElementById("typeSelect");
-  Object.entries(PRODUCT_TYPES).forEach(([key, def]) => {
-    const opt = document.createElement("option");
-    opt.value = key;
-    opt.textContent = def.label;
-    typeSelect.appendChild(opt);
-  });
-
-  function addProduct(type) {
-    const def = PRODUCT_TYPES[type];
-    const product = {};
-
-    def.fields.forEach(f => {
-      const el = document.getElementById(`field_${f.key}`);
-      product[f.key] = f.type === "number"
-              ? parseFloat(el.value)
-              : el.value;
-      el.value = "";
-    });
-
-    comparisons[type] ??= [];
-    comparisons[type].push(product);
-
-    localStorage.setItem("comparisons", JSON.stringify(comparisons));
-    renderCompareList(type);
-  }
-  function renderCompareList(type) {
-    const def = PRODUCT_TYPES[type];
-    const list = document.getElementById("compareList");
-    const items = comparisons[type] || [];
-
-    if (!items.length) {
-      list.innerHTML = "<em>No items yet</em>";
-      return;
-    }
-
-    const results = items.map(p => ({
-      ...p,
-      value: def.calculate(p)
-    }));
-
-    const best = Math.min(...results.map(r => r.value));
-
-    list.innerHTML = results.map(r => `
-    <div class="item">
-      <span>
-        ${r.name} —
-        <strong class="${r.value === best ? "highlight" : ""}">
-          ${r.value.toFixed(2)} ${def.unitLabel}
-        </strong>
-      </span>
-    </div>
-  `).join("");
-  }
-
-
-  //---
 
   updateDisplay();
   render();
